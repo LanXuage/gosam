@@ -1,108 +1,119 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"os"
-	"strings"
-	"syscall"
+	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
 
-type ARPScanResult struct {
-	ip     net.IP
-	mac    net.HardwareAddr
-	vendor string
+type ARPInterface struct {
+	Name    string
+	Gateway net.IP
+	Mask    uint32
+	Handle  *pcap.Handle
 }
 
-func getGateWay() net.IP {
-	netlinks, err := syscall.NetlinkRIB(syscall.RTM_GETROUTE, syscall.AF_INET)
+type ARPScanResult struct {
+	IP     net.IP
+	Mac    net.HardwareAddr
+	Vendor string
+}
+
+type ARPMap map[uint32]net.HardwareAddr
+
+type ARPScanner struct {
+	State   int8
+	Opts    gopacket.SerializeOptions
+	Timeout time.Duration
+	ARPIfs  []ARPInterface
+	Maps    ARPMap
+}
+
+func New() *ARPScanner {
+	a := &ARPScanner{
+		State: 0,
+		Opts: gopacket.SerializeOptions{
+			FixLengths:       true,
+			ComputeChecksums: true,
+		},
+		Timeout: 5 * time.Second,
+	}
+	gateways := GetGateways()
+	devs, err := pcap.FindAllDevs()
 	if err != nil {
 		log.Fatal(err)
 	}
-	nmsg, err := syscall.ParseNetlinkMessage(netlinks)
+	ifs, err := net.Interfaces()
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, m := range nmsg {
-		if m.Header.Type == syscall.RTM_NEWROUTE {
-			attrs, err := syscall.ParseNetlinkRouteAttr(&m)
-			if err != nil {
-				log.Fatal(err)
+	for _, gateway := range gateways {
+		gatewayUint32 := IP2Uint32(gateway)
+		for _, dev := range devs {
+			if dev.Addresses == nil {
+				continue
 			}
-			for _, attr := range attrs {
-				if attr.Attr.Type == syscall.RTA_GATEWAY {
-					return attr.Value
+			for _, addr := range dev.Addresses {
+				if addr.IP == nil {
+					continue
+				}
+				ipUint32 := IP2Uint32(addr.IP)
+				maskUint32 := IPMask2Uint32(addr.Netmask)
+				if ipUint32&maskUint32 != gatewayUint32&maskUint32 {
+					continue
+				}
+				for _, i := range ifs {
+					if i.Name != dev.Name {
+						continue
+					}
+					handle, err := pcap.OpenLive(i.Name, 1500, false, pcap.BlockForever)
+					if err != nil {
+						log.Fatal(err)
+					}
+					arpInterface := ARPInterface{
+						Name:    i.Name,
+						Gateway: gateway,
+						Mask:    maskUint32,
+						Handle:  handle,
+					}
+					a.ARPIfs = append(a.ARPIfs, arpInterface)
 				}
 			}
 		}
 	}
-	return nil
+	return a
 }
 
-func getOui() (map[string]string, error) {
-	ouiFile, err := os.Open("arpscan/ieee-oui.txt")
-	if err != nil {
-		log.Println("open ieee-oui.txt error ", err)
-		return nil, err
+func (a *ARPScanner) Close() {
+	if a.ARPIfs != nil {
+		for _, arpIfs := range a.ARPIfs {
+			arpIfs.Handle.Close()
+		}
 	}
-	defer ouiFile.Close()
-	ouiReader := bufio.NewReader(ouiFile)
-	oui := make(map[string]string)
-	for {
-		line, _, err := ouiReader.ReadLine()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Fatal(err)
-		}
-		item := strings.Split(string(line), "\t")
-		if len(item) != 2 {
-			continue
-		}
-		oui[item[0]] = item[1]
-	}
-	return oui, nil
 }
 
-func arpScan(targets []net.IP) {
+func (a *ARPScanner) generateTargets() *[]net.IP {
+	var targets []net.IP
+
+	return &targets
+}
+
+func (a *ARPScanner) Scan(targets []net.IP) {
 
 }
 
-func main() {
-	gateway := getGateWay()
-	fmt.Println(gateway)
-	oui, err := getOui()
-	if err != nil {
-		log.Fatal(err)
-	}
-	opts := gopacket.SerializeOptions{
-		FixLengths:       true,
-		ComputeChecksums: true,
-	}
+func (a *ARPScanner) SendARPReq(target net.IP) {
 	var targetIp = net.IPv4(192, 168, 48, 1)
 	ifs, err := pcap.FindAllDevs()
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println(ifs)
-	handle, err := pcap.OpenLive(ifs[0].Name, 1600, true, pcap.BlockForever)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer handle.Close()
-	src := gopacket.NewPacketSource(handle, layers.LayerTypeEthernet)
-	packets := src.Packets()
-	resultCh := make(chan ARPScanResult, 10)
-	go recvARP(oui, packets, resultCh)
-	fmt.Println(handle)
 	nifs, err := net.Interfaces()
 	if err != nil {
 		log.Fatal(err)
@@ -131,27 +142,44 @@ func main() {
 		DstProtAddress:    targetIp.To4(),
 	}
 	buf := gopacket.NewSerializeBuffer()
-	err = gopacket.SerializeLayers(buf, opts, ethLayer, arpLayer)
+	err = gopacket.SerializeLayers(buf, a.Opts, ethLayer, arpLayer)
 	if err != nil {
 		log.Fatal(err)
 	}
 	outgoingPacket := buf.Bytes()
 	fmt.Println(outgoingPacket)
-	err = handle.WritePacketData(outgoingPacket)
+	err = a.ARPIfs[0].Handle.WritePacketData(outgoingPacket)
 	if err != nil {
 		log.Fatal(err)
 	}
-	for result := range resultCh {
-		fmt.Println(result)
-		fmt.Println(targetIp)
-		if targetIp.Equal(result.ip) {
-			break
-		}
-	}
+	// for result := range resultCh {
+	// 	fmt.Println(result)
+	// 	fmt.Println(targetIp)
+	// 	if targetIp.Equal(result.ip) {
+	// 		break
+	// 	}
+	// }
 	fmt.Println("done")
 }
 
-func recvARP(oui map[string]string, packets <-chan gopacket.Packet, resultCh chan ARPScanResult) error {
+func main() {
+	a := New()
+	defer a.Close()
+	// oui, err := GetOui()
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// resultCh := make(chan ARPScanResult, 10)
+	// src := gopacket.NewPacketSource(handle, layers.LayerTypeEthernet)
+	// packets := src.Packets()
+	// a := &ARPScanner{}
+	// defer a.Close()
+	// targets := a.generateTargets()
+	// go a.RecvARP(oui, packets, resultCh)
+}
+
+func (a *ARPScanner) RecvARP(oui map[string]string, packets <-chan gopacket.Packet, resultCh chan ARPScanResult) error {
 	defer close(resultCh)
 	for packet := range packets {
 		arpLayer := packet.Layer(layers.LayerTypeARP)
@@ -163,28 +191,26 @@ func recvARP(oui map[string]string, packets <-chan gopacket.Packet, resultCh cha
 			continue
 		}
 		srcMac := net.HardwareAddr(arp.SourceHwAddress)
-		prefix1 := strings.ToUpper(strings.Replace(srcMac.String()[:8], ":", "", -1))
-		prefix2 := strings.ToUpper(strings.Replace(srcMac.String()[:13], ":", "", -1))
+		prefix1, prefix2 := GetOuiPrefix(srcMac)
 		vendor := oui[prefix2]
 		if len(vendor) == 0 {
 			vendor = oui[prefix1]
 		}
 		resultCh <- ARPScanResult{
-			ip:     net.IP(arp.SourceProtAddress),
-			mac:    srcMac,
-			vendor: vendor,
+			IP:     net.IP(arp.SourceProtAddress),
+			Mac:    srcMac,
+			Vendor: vendor,
 		}
 		dstMac := net.HardwareAddr(arp.DstHwAddress)
-		prefix1 = strings.ToUpper(strings.Replace(srcMac.String()[:8], ":", "", -1))
-		prefix2 = strings.ToUpper(strings.Replace(srcMac.String()[:13], ":", "", -1))
+		prefix1, prefix2 = GetOuiPrefix(dstMac)
 		vendor = oui[prefix2]
 		if len(vendor) == 0 {
 			vendor = oui[prefix1]
 		}
 		resultCh <- ARPScanResult{
-			ip:     net.IP(arp.DstProtAddress),
-			mac:    dstMac,
-			vendor: vendor,
+			IP:     net.IP(arp.DstProtAddress),
+			Mac:    dstMac,
+			Vendor: vendor,
 		}
 	}
 	fmt.Println("recvARP done. ")
