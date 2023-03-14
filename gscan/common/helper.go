@@ -1,4 +1,4 @@
-package main
+package common
 
 import (
 	"bufio"
@@ -11,7 +11,7 @@ import (
 )
 
 func GetOui() (map[string]string, error) {
-	ouiFile, err := os.Open("arpscan/ieee-oui.txt")
+	ouiFile, err := os.Open("arp/ieee-oui.txt")
 	if err != nil {
 		log.Println("open ieee-oui.txt error ", err)
 		return nil, err

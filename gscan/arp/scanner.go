@@ -1,7 +1,8 @@
-package main
+package arpscan
 
 import (
 	"fmt"
+	"gscan/common"
 	"log"
 	"net"
 	"time"
@@ -46,7 +47,7 @@ type Target struct {
 }
 
 func New() *ARPScanner {
-	omap, err := GetOui()
+	omap, err := common.GetOui()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -60,7 +61,7 @@ func New() *ARPScanner {
 		OMap:    omap,
 		AMap:    make(ARPMap),
 	}
-	gateways := GetGateways()
+	gateways := common.GetGateways()
 	devs, err := pcap.FindAllDevs()
 	if err != nil {
 		log.Fatal(err)
@@ -70,7 +71,7 @@ func New() *ARPScanner {
 		log.Fatal(err)
 	}
 	for _, gateway := range gateways {
-		gatewayUint32 := IP2Uint32(gateway)
+		gatewayUint32 := common.IP2Uint32(gateway)
 		for _, dev := range devs {
 			if dev.Addresses == nil {
 				continue
@@ -79,8 +80,8 @@ func New() *ARPScanner {
 				if addr.IP == nil {
 					continue
 				}
-				ipUint32 := IP2Uint32(addr.IP)
-				maskUint32 := IPMask2Uint32(addr.Netmask)
+				ipUint32 := common.IP2Uint32(addr.IP)
+				maskUint32 := common.IPMask2Uint32(addr.Netmask)
 				if ipUint32&maskUint32 != gatewayUint32&maskUint32 {
 					continue
 				}
@@ -118,11 +119,13 @@ func (a *ARPScanner) Close() {
 
 func (a *ARPScanner) GenerateTarget(targetCh chan<- Target) {
 	for _, arpIfs := range a.ARPIfs {
-		for i := arpIfs.Mask + 1; i < arpIfs.Mask+^arpIfs.Mask; i++ {
+		ipU32 := common.IP2Uint32(arpIfs.IP)
+		start := arpIfs.Mask & ipU32
+		for i := start + 1; i < start+^arpIfs.Mask; i++ {
 			targetCh <- Target{
 				SrcMac: arpIfs.HWAddr,
 				SrcIP:  arpIfs.IP,
-				DstIP:  Uint322IP(i),
+				DstIP:  common.Uint322IP(i),
 				Handle: arpIfs.Handle,
 			}
 		}
@@ -192,9 +195,9 @@ func (a *ARPScanner) RecvARP(packets <-chan gopacket.Packet, resultCh chan<- ARP
 		}
 		srcMac := net.HardwareAddr(arp.SourceHwAddress)
 		srcIP := net.IP(arp.SourceProtAddress)
-		srcIPU32 := IP2Uint32(srcIP)
+		srcIPU32 := common.IP2Uint32(srcIP)
 		if a.AMap[srcIPU32] == nil {
-			prefix1, prefix2 := GetOuiPrefix(srcMac)
+			prefix1, prefix2 := common.GetOuiPrefix(srcMac)
 			vendor := a.OMap[prefix2]
 			if len(vendor) == 0 {
 				vendor = a.OMap[prefix1]
@@ -208,9 +211,9 @@ func (a *ARPScanner) RecvARP(packets <-chan gopacket.Packet, resultCh chan<- ARP
 		}
 		dstMac := net.HardwareAddr(arp.DstHwAddress)
 		dstIP := net.IP(arp.DstProtAddress)
-		dstIPU32 := IP2Uint32(dstIP)
-		if a.AMap[IP2Uint32(srcIP)] == nil {
-			prefix1, prefix2 := GetOuiPrefix(dstMac)
+		dstIPU32 := common.IP2Uint32(dstIP)
+		if a.AMap[common.IP2Uint32(srcIP)] == nil {
+			prefix1, prefix2 := common.GetOuiPrefix(dstMac)
 			vendor := a.OMap[prefix2]
 			if len(vendor) == 0 {
 				vendor = a.OMap[prefix1]
@@ -227,7 +230,7 @@ func (a *ARPScanner) RecvARP(packets <-chan gopacket.Packet, resultCh chan<- ARP
 	return nil
 }
 
-func main() {
+func test() {
 	a := New()
 	defer a.Close()
 	for result := range a.ScanLocalNet() {
