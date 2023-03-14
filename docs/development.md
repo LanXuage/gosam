@@ -23,7 +23,7 @@
 ## 本地测试环境搭建
 
 ```sh
-cd core && docker-compose up -d
+docker-compose up -d
 ```
 
 ## temporal 开发
