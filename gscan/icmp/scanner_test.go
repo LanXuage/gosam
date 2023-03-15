@@ -1,7 +1,10 @@
 package icmp
 
-import "testing"
+import (
+	"testing"
+)
 
 func Test_ICMPScanner(t *testing.T) {
-
+	i := New()
+	defer i.Close()
 }
