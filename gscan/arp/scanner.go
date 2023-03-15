@@ -86,7 +86,7 @@ func New() *ARPScanner {
 					if i.Name != dev.Name {
 						continue
 					}
-					handle, err := pcap.OpenLive(i.Name, 1500, false, pcap.BlockForever)
+					handle, err := pcap.OpenLive(i.Name, 65536, true, pcap.BlockForever)
 					if err != nil {
 						log.Fatal(err)
 					}
@@ -107,6 +107,7 @@ func New() *ARPScanner {
 }
 
 func (a *ARPScanner) Close() {
+	<-a.Stop
 	if a.ARPIfs != nil {
 		for _, arpIfs := range a.ARPIfs {
 			arpIfs.Handle.Close()
@@ -132,7 +133,7 @@ func (a *ARPScanner) GenerateTarget(targetCh chan<- Target) {
 }
 
 // 执行全局域网扫描
-func (a *ARPScanner) ScanLocalNet() <-chan ARPScanResult {
+func (a *ARPScanner) ScanLocalNet() chan ARPScanResult {
 	targetCh := make(chan Target, 10)
 	fmt.Println("Start Generate")
 	go a.GenerateTarget(targetCh)

@@ -8,3 +8,9 @@ go run greetings/worker/main.go
 ```
 go run greetings/starter/main.go
 ```
+
+### ARP 测试
+
+```sh
+go test -v ./arp
+```
