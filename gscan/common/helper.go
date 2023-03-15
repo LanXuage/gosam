@@ -1,40 +1,11 @@
 package common
 
 import (
-	"bufio"
-	"io"
 	"log"
 	"net"
-	"os"
 	"strings"
 	"syscall"
 )
-
-func GetOui() (map[string]string, error) {
-	ouiFile, err := os.Open("arp/ieee-oui.txt")
-	if err != nil {
-		log.Println("open ieee-oui.txt error ", err)
-		return nil, err
-	}
-	defer ouiFile.Close()
-	ouiReader := bufio.NewReader(ouiFile)
-	oui := make(map[string]string)
-	for {
-		line, _, err := ouiReader.ReadLine()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Fatal(err)
-		}
-		item := strings.Split(string(line), "\t")
-		if len(item) != 2 {
-			continue
-		}
-		oui[item[0]] = item[1]
-	}
-	return oui, nil
-}
 
 func GetOuiPrefix(mac net.HardwareAddr) (string, string) {
 	ret1 := strings.ToUpper(strings.Replace(mac.String()[:8], ":", "", -1))
