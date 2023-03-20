@@ -37,6 +37,7 @@ type ARPScanner struct {
 	ARPIfs  []ARPInterface            // 可用接口列表
 	AMap    ARPMap                    // 获取到的IP <-> Mac 映射表
 	OMap    OUIMap                    // Mac前缀 <-> 厂商 映射表
+	GotGateway chan struct{}
 }
 
 type Target struct {
@@ -50,6 +51,7 @@ func New() *ARPScanner {
 	omap := common.GetOui()
 	a := &ARPScanner{
 		Stop: make(chan struct{}),
+		GotGateway: make(chan struct{}),
 		Opts: gopacket.SerializeOptions{
 			FixLengths:       true,
 			ComputeChecksums: true,
@@ -151,6 +153,7 @@ func (a *ARPScanner) ScanLocalNet() chan ARPScanResult {
 // 扫描协程
 func (a *ARPScanner) Scan(targetCh <-chan Target) {
 	defer close(a.Stop)
+	defer close(a.GotGateway)
 	for target := range targetCh {
 		a.SendARPReq(target)
 	}
