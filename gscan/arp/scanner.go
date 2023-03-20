@@ -88,10 +88,7 @@ func New() *ARPScanner {
 					if i.Name != dev.Name {
 						continue
 					}
-					handle, err := pcap.OpenLive(i.Name, 65536, true, pcap.BlockForever)
-					if err != nil {
-						log.Fatal(err)
-					}
+					handle := common.GetHandle(i.Name)
 					arpInterface := ARPInterface{
 						Name:    i.Name,
 						Gateway: gateway,

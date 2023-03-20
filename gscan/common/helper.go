@@ -3,6 +3,8 @@ package common
 import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
+	"log"
 	"net"
 	"strings"
 )
@@ -37,4 +39,12 @@ func PacketToIPv4(packet gopacket.Packet) net.IP{
 		}
 	}
 	return net.IPv4zero
+}
+
+func GetHandle(deviceName string) *pcap.Handle {
+	handle, err := pcap.OpenLive(deviceName, 65535, true, pcap.BlockForever)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return handle
 }

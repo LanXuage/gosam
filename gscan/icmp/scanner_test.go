@@ -10,7 +10,8 @@ func Test_ICMPScanner(t *testing.T) {
 	defer i.Close()
 
 	tmp := []net.IP{
-		{183,6,50,84},
+		{14,119,104,189},
+		{183,6,56,68},
 	}
 
 	<-i.Scan(tmp)

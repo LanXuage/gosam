@@ -52,16 +52,24 @@ func New() *ICMPScanner {
 
 func (icmpScanner *ICMPScanner) GenerateTarget(targetCh chan<- ICMPTarget, ipList []net.IP) {
 	defer close(targetCh)
-	for _, ip := range ipList {
-		targetCh <- ICMPTarget{
-			Target: arp.Target{
-				SrcIP: icmpScanner.AScanner.ARPIfs[0].IP,
-				DstIP: ip,
-				SrcMac: icmpScanner.AScanner.ARPIfs[0].HWAddr,
-				Handle: icmpScanner.AScanner.ARPIfs[0].Handle,
-			},
-			DstMac: icmpScanner.AScanner.AMap[common.IP2Uint32(icmpScanner.AScanner.ARPIfs[0].Gateway)],
+	if icmpScanner.AScanner.ARPIfs != nil {
+		fmt.Println(icmpScanner.AScanner.ARPIfs)
+		handle := common.GetHandle(icmpScanner.AScanner.ARPIfs[0].Name)
+		if handle != nil {
+			for _, ip := range ipList {
+				targetCh <- ICMPTarget{
+					Target: arp.Target{
+						SrcIP: icmpScanner.AScanner.ARPIfs[0].IP,
+						DstIP: ip,
+						SrcMac: icmpScanner.AScanner.ARPIfs[0].HWAddr,
+						Handle: handle,
+					},
+					DstMac: icmpScanner.AScanner.AMap[common.IP2Uint32(icmpScanner.AScanner.ARPIfs[0].Gateway)],
+				}
+			}
 		}
+	} else {
+		log.Fatal("可用网卡列表为空")
 	}
 }
 
@@ -128,7 +136,6 @@ func (icmpScanner *ICMPScanner) SendICMP(target ICMPTarget) {
 		log.Fatal(err)
 	}
 
-	//fmt.Println(buffer.Bytes())
 	fmt.Println("Sent ICMP Echo Request To", target.DstIP)
 
 	err = target.Handle.WritePacketData(buffer.Bytes())
@@ -145,19 +152,27 @@ func (icmpScanner *ICMPScanner) RecvICMP(packets <-chan gopacket.Packet, resultC
 			fmt.Println("fuck")
 			return
 		case packet := <-packets:
-			//fmt.Println(packet)
-			if icmpLayer := packet.Layer(layers.LayerTypeICMPv4); icmpLayer != nil {
-				icmp, _ := icmpLayer.(*layers.ICMPv4)
-				fmt.Println(icmp.Id, icmp.Seq)
-				if icmp.Id == constant.ICMPId && icmp.Seq == constant.ICMPSeq {
-					if icmp.TypeCode.Type() == layers.ICMPv4TypeEchoReply &&
-						icmp.TypeCode.Code() == layers.ICMPv4CodeNet {
-						ip := common.PacketToIPv4(packet)
-						if ip != nil {
-							resultCh <- ICMPScanResult{ip.To4()}
-							fmt.Println("Receive Reply Pakcet from:", ip.To4())
-						}
-					}
+			icmpLayer := packet.Layer(layers.LayerTypeICMPv4)
+			if icmpLayer == nil {
+				continue
+			}
+
+			icmp, _ := icmpLayer.(*layers.ICMPv4)
+			if icmp == nil {
+				continue
+			}
+
+			if icmp.TypeCode.Type() == layers.ICMPv4TypeEchoReply &&
+				icmp.TypeCode.Code() == layers.ICMPv4CodeNet &&
+				icmp.Id == constant.ICMPId &&
+				icmp.Seq == constant.ICMPSeq {
+				fmt.Println(icmp)
+				ip := common.PacketToIPv4(packet)
+				if ip != nil {
+					resultCh <- ICMPScanResult{ip.To4()}
+					fmt.Println("Receive Reply Pakcet from:", ip.To4())
+				} else {
+					fmt.Println("Fuck")
 				}
 			}
 		}
