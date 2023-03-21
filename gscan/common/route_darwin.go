@@ -13,11 +13,10 @@ import (
 )
 
 func GetGateways() []net.IP {
-	//command := "route get default | grep gateway"
-	//ip := Exec(command)
-	//
-	//return ip
-	return []net.IP{{192,168,0,1}}
+	command := "route get default | grep gateway"
+	ip := Exec(command)
+
+	return ip
 }
 
 func Exec(command string) []net.IP {
@@ -37,7 +36,7 @@ func Exec(command string) []net.IP {
 	tmp2 = Replace(tmp2, "\n")
 
 	s := []net.IP{}
-	s = append(s, net.ParseIP(tmp2))
+	s = append(s, net.ParseIP(tmp2).To4())
 	return s
 }
 

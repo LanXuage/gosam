@@ -154,7 +154,7 @@ func (a *ARPScanner) Scan(targetCh <-chan Target) {
 	for target := range targetCh {
 		a.SendARPReq(target)
 	}
-	fmt.Println("Not targets")
+	//fmt.Println("Not targets")
 	time.Sleep(a.Timeout)
 }
 

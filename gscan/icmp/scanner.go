@@ -33,9 +33,7 @@ func New() *ICMPScanner {
 		AScanner: arp.New(),
 	}
 	go func() {
-		for result := range icmpScanner.AScanner.ScanLocalNet() {
-			fmt.Println(result)
-		}
+		icmpScanner.AScanner.ScanLocalNet()
 	}()
 
 	<-icmpScanner.AScanner.GotGateway
@@ -53,47 +51,57 @@ func New() *ICMPScanner {
 func (icmpScanner *ICMPScanner) GenerateTarget(targetCh chan<- ICMPTarget, ipList []net.IP) {
 	defer close(targetCh)
 	if icmpScanner.AScanner.ARPIfs != nil {
-		fmt.Println(icmpScanner.AScanner.ARPIfs)
-		handle := common.GetHandle(icmpScanner.AScanner.ARPIfs[0].Name)
-		if handle != nil {
-			for _, ip := range ipList {
-				targetCh <- ICMPTarget{
-					Target: arp.Target{
-						SrcIP: icmpScanner.AScanner.ARPIfs[0].IP,
-						DstIP: ip,
-						SrcMac: icmpScanner.AScanner.ARPIfs[0].HWAddr,
-						Handle: handle,
-					},
-					DstMac: icmpScanner.AScanner.AMap[common.IP2Uint32(icmpScanner.AScanner.ARPIfs[0].Gateway)],
+		//fmt.Println(icmpScanner.AScanner.ARPIfs)
+		for _, arpIfs := range icmpScanner.AScanner.ARPIfs {
+			handle := common.GetHandle(arpIfs.Name)
+			if handle != nil {
+				for _, ip := range ipList {
+					targetCh <- ICMPTarget{
+						Target: arp.Target{
+							SrcIP: arpIfs.IP,
+							DstIP: ip,
+							SrcMac: arpIfs.HWAddr,
+							Handle: handle,
+						},
+						DstMac: icmpScanner.AScanner.AMap[common.IP2Uint32(arpIfs.Gateway)],
+					}
 				}
 			}
 		}
+
 	} else {
-		log.Fatal("可用网卡列表为空")
+		log.Fatal("找不到网关对应的网卡")
 	}
 }
 
-func (icmpScanner *ICMPScanner) Scan(ipList []net.IP) chan ICMPScanResult {
-	targetCh := make(chan ICMPTarget, 10)
-	fmt.Println("Start Generate")
-	go icmpScanner.GenerateTarget(targetCh, ipList)
+func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
+
+	fmt.Println("Start Listen To Recv ICMP Packet...")
 	resultCh := make(chan ICMPScanResult, 10)
-	fmt.Println("Start Recv")
-	for _, arpIfs := range icmpScanner.AScanner.ARPIfs {
+	for _, arpIfs := range icmpScanner.AScanner.ARPIfs {    // 遍历网卡开启监听
 		src := gopacket.NewPacketSource(arpIfs.Handle, arpIfs.Handle.LinkType())
 		go icmpScanner.RecvICMP(src.Packets(), resultCh)
+		fmt.Printf("Open %s Listen...\n", arpIfs.Name)
 	}
-	fmt.Println("Start Scan")
 
-	go func() {
-		//defer close(icmpScanner.Stop)
-		for target := range targetCh {
-			icmpScanner.SendICMP(target)
-		}
-		time.Sleep(time.Second*5)
-	}()
+	fmt.Println("Start Generate TargetChannel By ipList...")
+	targetCh := make(chan ICMPTarget, 10)
+	go icmpScanner.GenerateTarget(targetCh, ipList)    // 开始生产
+
+	fmt.Println("Start Scan ICMP...")
+	go icmpScanner.Scan(targetCh)
+
 	return resultCh
 }
+
+func (icmpScanner *ICMPScanner)Scan(targetCh <-chan ICMPTarget) {
+	defer close(icmpScanner.Stop)
+	for target := range targetCh {
+		icmpScanner.SendICMP(target)    // 消费者
+	}
+	time.Sleep(time.Second*8)   // 等待接收器接受发出去的包
+}
+
 
 func (icmpScanner *ICMPScanner) SendICMP(target ICMPTarget) {
 	// 构建以太网层
@@ -149,9 +157,13 @@ func (icmpScanner *ICMPScanner) RecvICMP(packets <-chan gopacket.Packet, resultC
 	for {
 		select {
 		case <-icmpScanner.Stop:
-			fmt.Println("fuck")
+			fmt.Println("ICMP Recv Done")
 			return
 		case packet := <-packets:
+			if packet == nil {
+				continue
+			}
+
 			icmpLayer := packet.Layer(layers.LayerTypeICMPv4)
 			if icmpLayer == nil {
 				continue
@@ -166,13 +178,11 @@ func (icmpScanner *ICMPScanner) RecvICMP(packets <-chan gopacket.Packet, resultC
 				icmp.TypeCode.Code() == layers.ICMPv4CodeNet &&
 				icmp.Id == constant.ICMPId &&
 				icmp.Seq == constant.ICMPSeq {
-				fmt.Println(icmp)
+				//fmt.Println(icmp)
 				ip := common.PacketToIPv4(packet)
 				if ip != nil {
 					resultCh <- ICMPScanResult{ip.To4()}
 					fmt.Println("Receive Reply Pakcet from:", ip.To4())
-				} else {
-					fmt.Println("Fuck")
 				}
 			}
 		}

@@ -48,3 +48,15 @@ func GetHandle(deviceName string) *pcap.Handle {
 	}
 	return handle
 }
+
+func IPList2NetIPList(ipList []string) []net.IP{
+	s := []net.IP{}
+	for _, ip := range ipList {
+		s = append(s, net.ParseIP(ip).To4())
+	}
+	return s
+}
+
+func CheckIPisIPNet(ip net.IP, gateway net.IP, mask uint32) {
+	
+}
