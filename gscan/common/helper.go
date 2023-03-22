@@ -31,6 +31,7 @@ func Uint322IP(ipUint32 uint32) net.IP {
 	return net.IPv4(byte((ipUint32>>24)&0xff), byte((ipUint32>>16)&0xff), byte((ipUint32>>8)&0xff), byte(ipUint32&0xff))
 }
 
+
 func PacketToIPv4(packet gopacket.Packet) net.IP{
 	if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
 		ip, _ := ipLayer.(*layers.IPv4)
@@ -57,6 +58,21 @@ func IPList2NetIPList(ipList []string) []net.IP{
 	return s
 }
 
-func CheckIPisIPNet(ip net.IP, gateway net.IP, mask uint32) {
-	
+
+// 重写IPNet.Contains函数
+func CheckIPisIPNet(ip net.IP, gateway net.IP, mask uint32) bool {
+
+	ipArray := ip.To4()
+	gatewayArray := gateway.To4()
+
+	l := len(ipArray)
+	if l != len(gatewayArray) {
+		return false
+	}
+	for i := 0 ; i < l; i ++ {
+		if ipArray[i]&byte((mask>>(24-i*8))&0xff) != gatewayArray[i]&byte((mask>>(24-i*8))&0xff) {
+			return false
+		}
+	}
+	return true
 }

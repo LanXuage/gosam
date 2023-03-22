@@ -8,6 +8,7 @@ require (
 	github.com/google/gopacket v1.1.19
 	github.com/pborman/uuid v1.2.1
 	github.com/stretchr/testify v1.8.1
+	golang.org/x/sys v0.4.0
 )
 
 require (
@@ -26,7 +27,6 @@ require (
 	go.temporal.io/api v1.16.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	golang.org/x/net v0.5.0 // indirect
-	golang.org/x/sys v0.4.0 // indirect
 	golang.org/x/text v0.6.0 // indirect
 	golang.org/x/time v0.1.0 // indirect
 	google.golang.org/genproto v0.0.0-20230127162408-596548ed4efa // indirect

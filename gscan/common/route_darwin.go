@@ -12,8 +12,18 @@ import (
 	"strings"
 )
 
+
+type NetInterface struct {
+	Name string
+	Mask uint32
+	Broadcast net.IP
+	Gateway net.IP
+	Mac net.HardwareAddr
+}
+
+
 func GetGateways() []net.IP {
-	command := "route get default | grep gateway"
+	command := ""
 	ip := Exec(command)
 
 	return ip
