@@ -26,3 +26,7 @@ func IPMask2Uint32(mask net.IPMask) uint32 {
 func Uint322IP(ipUint32 uint32) net.IP {
 	return net.IPv4(byte((ipUint32>>24)&0xff), byte((ipUint32>>16)&0xff), byte((ipUint32>>8)&0xff), byte(ipUint32&0xff))
 }
+
+func IsSameLAN(ip net.IP, otherIp net.IP, mask uint32) bool {
+	return IP2Uint32(ip)&mask == IP2Uint32(otherIp)&mask
+}
