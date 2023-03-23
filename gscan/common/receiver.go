@@ -28,7 +28,7 @@ func newReceiver() *Receiver {
 func (r *Receiver) init() {
 	for _, gsInterface := range *GetActiveInterfaces() {
 		src := gopacket.NewPacketSource(gsInterface.Handle, layers.LayerTypeEthernet)
-		fmt.Printf("start gsInterface %s", gsInterface.Name)
+		fmt.Printf("start gsInterface %s\n", gsInterface.Name)
 		go r.recv(src.Packets())
 	}
 }
@@ -49,6 +49,15 @@ func (r *Receiver) Register(name string, hookFun func(gopacket.Packet) interface
 		r.HookFuns[name] = hookFun
 	}
 	return r.ResultChs[name]
+}
+
+func (r *Receiver) Unregister(name string) {
+	if _, ok := r.ResultChs[name]; !ok {
+		r.Lock.Lock()
+		defer r.Lock.Unlock()
+		delete(r.ResultChs, name)
+		delete(r.HookFuns, name)
+	}
 }
 
 var instance = newReceiver()

@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"log"
 	"net"
 
@@ -37,7 +38,7 @@ func getActiveInterfaces() *[]GSInterface {
 					continue
 				}
 				maskUint32 := IPMask2Uint32(addr.Netmask)
-				if IsSameLAN(addr.IP, gateway, maskUint32) {
+				if !IsSameLAN(addr.IP, gateway, maskUint32) {
 					continue
 				}
 				for _, i := range ifs {
@@ -56,6 +57,7 @@ func getActiveInterfaces() *[]GSInterface {
 						HWAddr:  i.HardwareAddr,
 						IP:      addr.IP,
 					}
+					fmt.Println(gsInterface)
 					gsInterfaces = append(gsInterfaces, gsInterface)
 				}
 			}
