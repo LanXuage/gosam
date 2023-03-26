@@ -33,10 +33,6 @@ type ICMPScanResult struct {
 	IsARPScan bool
 }
 
-type ICMPScanResults struct {
-	Results []ICMPScanResult
-}
-
 func New() *ICMPScanner {
 	icmpScanner := &ICMPScanner{
 		Stop:     make(chan struct{}),
@@ -127,7 +123,7 @@ func (icmpScanner *ICMPScanner)Scan(targetCh <-chan ICMPTarget) {
 
 	for target := range targetCh {
 		//fmt.Println(target)
-		go icmpScanner.SendICMP(target)
+		icmpScanner.SendICMP(target)
 	}
 
 	time.Sleep(time.Second * 5)
@@ -163,7 +159,7 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 	go icmpScanner.Recv(resultCh)
 
 	fmt.Println("Start ICMP...")
-	icmpScanner.Scan(targetCh)
+	go icmpScanner.Scan(targetCh)
 
 	return resultCh
 }
@@ -172,47 +168,47 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 // 接收协程
 func (icmpScanner *ICMPScanner) Recv(resultCh chan<- ICMPScanResult) {
 	for r := range common.GetReceiver().Register("icmp", icmpScanner.RecvICMP) {
-		if results, ok := r.(ICMPScanResults); ok {
-			for _, result := range results.Results {
-				resultCh <- result
-			}
+		if result, ok := r.(ICMPScanResult); ok {
+			resultCh <- result
 		}
 	}
 }
 
 // ICMP接包协程
 func (icmpScanner *ICMPScanner) RecvICMP(packet gopacket.Packet) interface{} {
-	result := ICMPScanResults{
-		Results: make([]ICMPScanResult, 0),
-	}
 	icmpLayer := packet.Layer(layers.LayerTypeICMPv4)
-
 	if icmpLayer == nil {
-		return result
+		return nil
 	}
-
 	icmp, _ := icmpLayer.(*layers.ICMPv4)
 	if icmp == nil {
-		return result
+		return nil
 	}
+	//fmt.Println(icmp)
 
 	if icmp.Id == constant.ICMPId &&
 		icmp.Seq == constant.ICMPSeq {
-		fmt.Println(icmp)
-		ip := common.PacketToIPv4(packet)
-		if ip != nil {
-			result.Results = append(result.Results, ICMPScanResult{
-				IP: ip.To4(),
-				IsActive: true,
-				IsARPScan: false,
-			})
-			fmt.Println("Receive Reply Pakcet from:", ip.To4())
+		if icmp.TypeCode.Type() == layers.ICMPv4TypeEchoReply &&
+			icmp.TypeCode.Code() == layers.ICMPv4CodeNet {
+			ip := common.PacketToIPv4(packet)
+			if ip != nil {
+				fmt.Println("Receive Reply Pakcet from:", ip.To4())
+				return ICMPScanResult{
+					IP:        ip.To4(),
+					IsActive:  true,
+					IsARPScan: false,
+				}
+			}
+		}
+		if icmp.TypeCode.Type() == layers.ICMPv4TypeDestinationUnreachable {
+			ip := common.PacketToIPv4(packet)
+			if ip != nil {
+				fmt.Printf("%s Unreacheable\n", ip.To4())
+			}
 		}
 	}
-	return result
+	return nil
 }
-
-
 
 func (icmpScanner *ICMPScanner) Close() {
 	<-icmpScanner.Stop
