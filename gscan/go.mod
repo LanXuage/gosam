@@ -8,7 +8,6 @@ require (
 	github.com/google/gopacket v1.1.19
 	github.com/pborman/uuid v1.2.1
 	github.com/stretchr/testify v1.8.1
-	golang.org/x/sys v0.4.0
 )
 
 require (

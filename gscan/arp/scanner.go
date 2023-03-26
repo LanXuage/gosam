@@ -34,11 +34,7 @@ type ARPScanner struct {
 	Ifaces  *[]common.GSInterface     // 可用接口列表
 	AMap    ARPMap                    // 获取到的IP <-> Mac 映射表
 	OMap    OUIMap                    // Mac前缀 <-> 厂商 映射表
-<<<<<<< HEAD
-	GotGateway chan struct{}
-=======
 	Lock sync.Mutex
->>>>>>> main
 }
 
 type Target struct {
@@ -53,7 +49,6 @@ func New() *ARPScanner {
 	a := &ARPScanner{
 		GotGateway: make(chan struct{}),
 		Stop: make(chan struct{}),
-		GotGateway: make(chan struct{}),
 		Opts: gopacket.SerializeOptions{
 			FixLengths:       true,
 			ComputeChecksums: true,
@@ -61,52 +56,7 @@ func New() *ARPScanner {
 		Timeout: 3 * time.Second,
 		OMap:    omap,
 		AMap:    make(ARPMap),
-<<<<<<< HEAD
-	}
-	gateways := common.GetGateways()
-	devs, err := pcap.FindAllDevs()
-	if err != nil {
-		log.Fatal(err)
-	}
-	ifs, err := net.Interfaces()
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, gateway := range gateways {
-		gatewayUint32 := common.IP2Uint32(gateway)
-		for _, dev := range devs {
-			if dev.Addresses == nil {
-				continue
-			}
-			for _, addr := range dev.Addresses {
-				if addr.IP == nil {
-					continue
-				}
-				ipUint32 := common.IP2Uint32(addr.IP)
-				maskUint32 := common.IPMask2Uint32(addr.Netmask)
-				if ipUint32&maskUint32 != gatewayUint32&maskUint32 {
-					continue
-				}
-				for _, i := range ifs {
-					if i.Name != dev.Name {
-						continue
-					}
-					handle := common.GetHandle(i.Name)
-					arpInterface := ARPInterface{
-						Name:    i.Name,
-						Gateway: gateway,
-						Mask:    maskUint32,
-						Handle:  handle,
-						HWAddr:  i.HardwareAddr,
-						IP:      addr.IP,
-					}
-					a.ARPIfs = append(a.ARPIfs, arpInterface)
-				}
-			}
-		}
-=======
 		Ifaces:  common.GetActiveInterfaces(),
->>>>>>> main
 	}
 	return a
 }
