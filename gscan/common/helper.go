@@ -1,11 +1,13 @@
 package common
 
 import (
+	"bytes"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"log"
 	"net"
+	"os/exec"
 	"strings"
 )
 
@@ -31,6 +33,9 @@ func Uint322IP(ipUint32 uint32) net.IP {
 	return net.IPv4(byte((ipUint32>>24)&0xff), byte((ipUint32>>16)&0xff), byte((ipUint32>>8)&0xff), byte(ipUint32&0xff))
 }
 
+func IsSameLAN(ip net.IP, otherIp net.IP, mask uint32) bool {
+	return IP2Uint32(ip)&mask == IP2Uint32(otherIp)&mask
+}
 
 func PacketToIPv4(packet gopacket.Packet) net.IP{
 	if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
@@ -75,4 +80,17 @@ func CheckIPisIPNet(ip net.IP, gateway net.IP, mask uint32) bool {
 		}
 	}
 	return true
+}
+
+func Exec(command string) []byte{
+	in := bytes.NewBuffer(nil)
+	cmd := exec.Command("sh")
+
+	cmd.Stdin = in
+	in.WriteString(command)
+	out, err := cmd.CombinedOutput()
+	if 	err != nil {
+		log.Fatal(err.Error())
+	}
+	return out
 }
