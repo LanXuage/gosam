@@ -27,14 +27,14 @@ type ARPMap map[uint32]net.HardwareAddr // IP <-> Mac 映射表类型
 type OUIMap map[string]string           // Mac前缀 <-> 厂商 映射表类型
 
 type ARPScanner struct {
-	GotGateway chan struct{}          // 告知ICMP已扫描完成
-	Stop    chan struct{}             // ARP 扫描器状态
-	Opts    gopacket.SerializeOptions // 包序列化选项
-	Timeout time.Duration             // 抓包超时时间
-	Ifaces  *[]common.GSInterface     // 可用接口列表
-	AMap    ARPMap                    // 获取到的IP <-> Mac 映射表
-	OMap    OUIMap                    // Mac前缀 <-> 厂商 映射表
-	Lock sync.Mutex
+	GotGateway chan struct{}             // 告知ICMP已扫描完成
+	Stop       chan struct{}             // ARP 扫描器状态
+	Opts       gopacket.SerializeOptions // 包序列化选项
+	Timeout    time.Duration             // 抓包超时时间
+	Ifaces     *[]common.GSInterface     // 可用接口列表
+	AMap       ARPMap                    // 获取到的IP <-> Mac 映射表
+	OMap       OUIMap                    // Mac前缀 <-> 厂商 映射表
+	Lock       sync.Mutex
 }
 
 type Target struct {
@@ -48,7 +48,7 @@ func New() *ARPScanner {
 	omap := common.GetOui()
 	a := &ARPScanner{
 		GotGateway: make(chan struct{}),
-		Stop: make(chan struct{}),
+		Stop:       make(chan struct{}),
 		Opts: gopacket.SerializeOptions{
 			FixLengths:       true,
 			ComputeChecksums: true,
@@ -113,7 +113,7 @@ func (a *ARPScanner) Scan(targetCh <-chan Target) {
 	for target := range targetCh {
 		a.SendARPReq(target)
 	}
-	fmt.Println("Not targets")
+	//fmt.Println("Not targets")
 	time.Sleep(a.Timeout)
 }
 
@@ -163,23 +163,21 @@ func (a *ARPScanner) RecvARP(packet gopacket.Packet) interface{} {
 	srcMac := net.HardwareAddr(arp.SourceHwAddress)
 	srcIP := net.IP(arp.SourceProtAddress)
 	srcIPU32 := common.IP2Uint32(srcIP)
+	a.Lock.Lock()
 	if a.AMap[srcIPU32] == nil {
-		a.Lock.Lock()
-		if a.AMap[srcIPU32] == nil {
-			prefix1, prefix2 := common.GetOuiPrefix(srcMac)
-			vendor := a.OMap[prefix2]
-			if len(vendor) == 0 {
-				vendor = a.OMap[prefix1]
-			}
-			result.Results = append(result.Results, ARPScanResult{
-				IP:     srcIP,
-				Mac:    srcMac,
-				Vendor: vendor,
-			})
-			a.AMap[srcIPU32] = srcMac
+		prefix1, prefix2 := common.GetOuiPrefix(srcMac)
+		vendor := a.OMap[prefix2]
+		if len(vendor) == 0 {
+			vendor = a.OMap[prefix1]
 		}
-		a.Lock.Unlock()
+		result.Results = append(result.Results, ARPScanResult{
+			IP:     srcIP,
+			Mac:    srcMac,
+			Vendor: vendor,
+		})
+		a.AMap[srcIPU32] = srcMac
 	}
+	a.Lock.Unlock()
 	dstMac := net.HardwareAddr(arp.DstHwAddress)
 	dstIP := net.IP(arp.DstProtAddress)
 	dstIPU32 := common.IP2Uint32(dstIP)

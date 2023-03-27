@@ -35,9 +35,9 @@ func (r *Receiver) init() {
 func (r *Receiver) recv(packets <-chan gopacket.Packet) {
 	for packet := range packets {
 		for name, hookFun := range r.HookFuns {
-			go func(name string, hookFun func(packet gopacket.Packet) interface{}) {
+			go func(packet gopacket.Packet, name string, hookFun func(packet gopacket.Packet) interface{}) {
 				r.ResultChs[name] <- hookFun(packet)
-			}(name, hookFun)
+			}(packet, name, hookFun)
 		}
 	}
 }

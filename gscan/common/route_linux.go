@@ -9,6 +9,7 @@ import (
 	"syscall"
 )
 
+
 func GetGateways() []net.IP {
 	ret := []net.IP{}
 	if runtime.GOOS == `linux` {
