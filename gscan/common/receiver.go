@@ -2,9 +2,10 @@ package common
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"sync"
 )
 
 type Receiver struct {
@@ -35,9 +36,9 @@ func (r *Receiver) init() {
 func (r *Receiver) recv(packets <-chan gopacket.Packet) {
 	for packet := range packets {
 		for name, hookFun := range r.HookFuns {
-			go func(name string, hookFun func(packet gopacket.Packet) interface{}) {
+			go func(packet gopacket.Packet, name string, hookFun func(packet gopacket.Packet) interface{}) {
 				r.ResultChs[name] <- hookFun(packet)
-			}(name, hookFun)
+			}(packet, name, hookFun)
 		}
 	}
 }
@@ -56,6 +57,7 @@ func (r *Receiver) Unregister(name string) {
 	if _, ok := r.ResultChs[name]; !ok {
 		r.Lock.Lock()
 		defer r.Lock.Unlock()
+		close(r.ResultChs[name])
 		delete(r.ResultChs, name)
 		delete(r.HookFuns, name)
 	}

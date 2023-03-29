@@ -11,6 +11,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"go.uber.org/zap"
 )
 
 type ARPScanResult struct {
@@ -20,21 +21,23 @@ type ARPScanResult struct {
 }
 
 type ARPScanResults struct {
-	Results []ARPScanResult
+	Results []*ARPScanResult
 }
 
-type ARPMap map[uint32]net.HardwareAddr // IP <-> Mac 映射表类型
-type OUIMap map[string]string           // Mac前缀 <-> 厂商 映射表类型
+type ARPMap map[uint32]*net.HardwareAddr // IP <-> Mac 映射表类型
+type OUIMap map[string]string            // Mac前缀 <-> 厂商 映射表类型
 
 type ARPScanner struct {
-	GotGateway chan struct{}          // 告知ICMP已扫描完成
-	Stop    chan struct{}             // ARP 扫描器状态
-	Opts    gopacket.SerializeOptions // 包序列化选项
-	Timeout time.Duration             // 抓包超时时间
-	Ifaces  *[]common.GSInterface     // 可用接口列表
-	AMap    ARPMap                    // 获取到的IP <-> Mac 映射表
-	OMap    OUIMap                    // Mac前缀 <-> 厂商 映射表
-	Lock sync.Mutex
+	Stop     chan struct{}             // ARP 扫描器状态
+	Opts     gopacket.SerializeOptions // 包序列化选项
+	Timeout  time.Duration             // 抓包超时时间
+	Ifaces   *[]common.GSInterface     // 可用接口列表
+	AMap     ARPMap                    // 获取到的IP <-> Mac 映射表
+	OMap     OUIMap                    // Mac前缀 <-> 厂商 映射表
+	Lock     sync.Mutex
+	Logger   *zap.Logger
+	TargetCh chan *Target
+	ResultCh chan *ARPScanResult
 }
 
 type Target struct {
@@ -45,34 +48,57 @@ type Target struct {
 }
 
 func New() *ARPScanner {
-	omap := common.GetOui()
+	logger, err := zap.NewProduction()
+	if err != nil {
+		log.Fatal(err)
+	}
 	a := &ARPScanner{
-		GotGateway: make(chan struct{}),
 		Stop: make(chan struct{}),
 		Opts: gopacket.SerializeOptions{
 			FixLengths:       true,
 			ComputeChecksums: true,
 		},
-		Timeout: 3 * time.Second,
-		OMap:    omap,
-		AMap:    make(ARPMap),
-		Ifaces:  common.GetActiveInterfaces(),
+		Timeout:  3 * time.Second,
+		OMap:     common.GetOui(),
+		AMap:     make(ARPMap),
+		Ifaces:   common.GetActiveInterfaces(),
+		TargetCh: make(chan *Target, 10),
+		ResultCh: make(chan *ARPScanResult, 10),
+		Logger:   logger,
+	}
+	go a.Recv()
+	go a.Scan()
+	for _, iface := range *a.Ifaces {
+		a.Logger.Info("iface", zap.Any("iface", iface))
+		a.TargetCh <- &Target{
+			SrcMac: iface.HWAddr,
+			SrcIP:  iface.IP,
+			DstIP:  iface.Gateway,
+			Handle: iface.Handle,
+		}
+		for res := range a.ResultCh {
+			if iface.Gateway.Equal(res.IP) {
+				break
+			}
+		}
 	}
 	return a
 }
 
 func (a *ARPScanner) Close() {
-	<-a.Stop
+	a.Logger.Sync()
+	common.GetReceiver().Unregister("arp")
+	close(a.TargetCh)
+	close(a.ResultCh)
 }
 
 // 目标生产协程
-func (a *ARPScanner) GenerateTarget(targetCh chan<- Target) {
-	defer close(targetCh)
+func (a *ARPScanner) GenerateTarget() {
 	for _, iface := range *a.Ifaces {
 		ipU32 := common.IP2Uint32(iface.IP)
 		start := iface.Mask & ipU32
 		for i := start + 1; i < start+^iface.Mask; i++ {
-			targetCh <- Target{
+			a.TargetCh <- &Target{
 				SrcMac: iface.HWAddr,
 				SrcIP:  iface.IP,
 				DstIP:  common.Uint322IP(i),
@@ -83,42 +109,40 @@ func (a *ARPScanner) GenerateTarget(targetCh chan<- Target) {
 }
 
 // 执行全局域网扫描
-func (a *ARPScanner) ScanLocalNet() chan ARPScanResult {
-	targetCh := make(chan Target, 10)
+func (a *ARPScanner) ScanLocalNet() chan *ARPScanResult {
 	fmt.Println("Start Generate")
-	go a.GenerateTarget(targetCh)
-	resultCh := make(chan ARPScanResult, 10)
-	fmt.Println("Start Recv")
-	go a.Recv(resultCh)
-	fmt.Println("Start Scan")
-	go a.Scan(targetCh)
-	return resultCh
+	go a.GenerateTarget()
+	return a.ResultCh
 }
 
 // 接收协程
-func (a *ARPScanner) Recv(resultCh chan<- ARPScanResult) {
+func (a *ARPScanner) Recv() {
+	defer a.Logger.Sync()
+	defer close(a.ResultCh)
+	a.Logger.Info("Ready to Recv.")
 	for r := range common.GetReceiver().Register("arp", a.RecvARP) {
 		if results, ok := r.(ARPScanResults); ok {
 			for _, result := range results.Results {
-				resultCh <- result
+				a.Logger.Info("recv", zap.Any("result", result))
+				a.ResultCh <- result
 			}
 		}
 	}
 }
 
 // 扫描协程
-func (a *ARPScanner) Scan(targetCh <-chan Target) {
+func (a *ARPScanner) Scan() {
 	defer close(a.Stop)
-	defer close(a.GotGateway)
-	for target := range targetCh {
+	defer a.Logger.Sync()
+	a.Logger.Info("Ready to Scan.")
+	for target := range a.TargetCh {
 		a.SendARPReq(target)
 	}
-	fmt.Println("Not targets")
-	time.Sleep(a.Timeout)
 }
 
 // ARP发包
-func (a *ARPScanner) SendARPReq(target Target) {
+func (a *ARPScanner) SendARPReq(target *Target) {
+	a.Logger.Info("sendArPReq", zap.Any("target", target))
 	ethLayer := &layers.Ethernet{
 		SrcMAC:       target.SrcMac,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
@@ -150,7 +174,7 @@ func (a *ARPScanner) SendARPReq(target Target) {
 // 接收协程
 func (a *ARPScanner) RecvARP(packet gopacket.Packet) interface{} {
 	result := ARPScanResults{
-		Results: make([]ARPScanResult, 0),
+		Results: make([]*ARPScanResult, 0),
 	}
 	arpLayer := packet.Layer(layers.LayerTypeARP)
 	if arpLayer == nil {
@@ -162,39 +186,35 @@ func (a *ARPScanner) RecvARP(packet gopacket.Packet) interface{} {
 	}
 	srcMac := net.HardwareAddr(arp.SourceHwAddress)
 	srcIP := net.IP(arp.SourceProtAddress)
-	srcIPU32 := common.IP2Uint32(srcIP)
-	if a.AMap[srcIPU32] == nil {
-		a.Lock.Lock()
-		if a.AMap[srcIPU32] == nil {
-			prefix1, prefix2 := common.GetOuiPrefix(srcMac)
-			vendor := a.OMap[prefix2]
-			if len(vendor) == 0 {
-				vendor = a.OMap[prefix1]
-			}
-			result.Results = append(result.Results, ARPScanResult{
-				IP:     srcIP,
-				Mac:    srcMac,
-				Vendor: vendor,
-			})
-			a.AMap[srcIPU32] = srcMac
-		}
-		a.Lock.Unlock()
+	if r, ok := a.generateResult(srcIP, srcMac); ok {
+		result.Results = append(result.Results, r)
 	}
 	dstMac := net.HardwareAddr(arp.DstHwAddress)
 	dstIP := net.IP(arp.DstProtAddress)
-	dstIPU32 := common.IP2Uint32(dstIP)
-	if a.AMap[common.IP2Uint32(srcIP)] == nil {
-		prefix1, prefix2 := common.GetOuiPrefix(dstMac)
+	if r, ok := a.generateResult(dstIP, dstMac); ok {
+		result.Results = append(result.Results, r)
+	}
+	a.Logger.Info("recv", zap.Any("result", result))
+	return result
+}
+
+func (a *ARPScanner) generateResult(srcIP net.IP, srcMac net.HardwareAddr) (*ARPScanResult, bool) {
+	srcIPU32 := common.IP2Uint32(srcIP)
+	a.Lock.Lock()
+	defer a.Lock.Unlock()
+	if a.AMap[srcIPU32] == nil {
+		prefix1, prefix2 := common.GetOuiPrefix(srcMac)
 		vendor := a.OMap[prefix2]
 		if len(vendor) == 0 {
 			vendor = a.OMap[prefix1]
 		}
-		result.Results = append(result.Results, ARPScanResult{
-			IP:     dstIP,
-			Mac:    dstMac,
+		result := &ARPScanResult{
+			IP:     srcIP,
+			Mac:    srcMac,
 			Vendor: vendor,
-		})
-		a.AMap[dstIPU32] = dstMac
+		}
+		a.AMap[srcIPU32] = &srcMac
+		return result, true
 	}
-	return result
+	return nil, false
 }

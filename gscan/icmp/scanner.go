@@ -2,15 +2,16 @@ package icmp
 
 import (
 	"fmt"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 	"gscan/arp"
 	"gscan/common"
 	"gscan/common/constant"
 	"log"
 	"net"
 	"time"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 )
 
 type ICMPScanner struct {
@@ -23,12 +24,12 @@ type ICMPTarget struct {
 	SrcIP  net.IP           // 发包的源协议IP
 	DstIP  net.IP           // 目的IP
 	Handle *pcap.Handle     // 发包的具体句柄地址
-	DstMac	net.HardwareAddr
+	DstMac net.HardwareAddr
 }
 
 type ICMPScanResult struct {
-	IP net.IP
-	IsActive bool
+	IP        net.IP
+	IsActive  bool
 	IsARPScan bool
 }
 
@@ -41,9 +42,6 @@ func New() *ICMPScanner {
 		Stop:     make(chan struct{}),
 		AScanner: arp.New(),
 	}
-
-	icmpScanner.AScanner.ScanLocalNet()
-	<-icmpScanner.AScanner.GotGateway
 	return icmpScanner
 }
 
@@ -51,19 +49,19 @@ func New() *ICMPScanner {
 func (icmpScanner *ICMPScanner) SendICMP(target ICMPTarget) {
 	// 构建以太网层
 	ethLayer := &layers.Ethernet{
-		SrcMAC: target.SrcMac,
-		DstMAC: target.DstMac,
+		SrcMAC:       target.SrcMac,
+		DstMAC:       target.DstMac,
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 
 	// 构建IP数据包
 	ipLayer := &layers.IPv4{
 		Protocol: layers.IPProtocolICMPv4,
-		SrcIP: target.SrcIP,
-		DstIP: target.DstIP,
-		Version: 4,
-		Flags: layers.IPv4DontFragment,
-		TTL: 64,
+		SrcIP:    target.SrcIP,
+		DstIP:    target.DstIP,
+		Version:  4,
+		Flags:    layers.IPv4DontFragment,
+		TTL:      64,
 	}
 
 	// 构建ICMP数据包
@@ -112,17 +110,17 @@ func (icmpScanner *ICMPScanner) GenerateTarget(targetCh chan<- ICMPTarget, ipLis
 		}
 		for _, ip := range ipList {
 			targetCh <- ICMPTarget{
-				SrcIP: iface.IP,
-				DstIP: ip,
+				SrcIP:  iface.IP,
+				DstIP:  ip,
 				SrcMac: iface.HWAddr,
 				Handle: iface.Handle,
-				DstMac: icmpScanner.AScanner.AMap[common.IP2Uint32(iface.Gateway)],
+				DstMac: *icmpScanner.AScanner.AMap[common.IP2Uint32(iface.Gateway)],
 			}
 		}
 	}
 }
 
-func (icmpScanner *ICMPScanner)Scan(targetCh <-chan ICMPTarget) {
+func (icmpScanner *ICMPScanner) Scan(targetCh <-chan ICMPTarget) {
 	defer close(icmpScanner.Stop)
 
 	for target := range targetCh {
@@ -133,7 +131,6 @@ func (icmpScanner *ICMPScanner)Scan(targetCh <-chan ICMPTarget) {
 	time.Sleep(time.Second * 5)
 
 }
-
 
 func (ICMPScanner *ICMPScanner) PingLocalNet() {
 
@@ -147,11 +144,11 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 		ipUint32 := common.IP2Uint32(ipList[i])
 		if icmpScanner.AScanner.AMap[ipUint32] != nil {
 			resultCh <- ICMPScanResult{
-				IP: ipList[i],
-				IsActive: true,
+				IP:        ipList[i],
+				IsActive:  true,
 				IsARPScan: true,
 			}
-			ipList = append(ipList[:i], ipList[(i+1):]...)  // 抹除ARP Scanner后的结果, 不计入生产者中
+			ipList = append(ipList[:i], ipList[(i+1):]...) // 抹除ARP Scanner后的结果, 不计入生产者中
 		}
 	}
 
@@ -167,7 +164,6 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 
 	return resultCh
 }
-
 
 // 接收协程
 func (icmpScanner *ICMPScanner) Recv(resultCh chan<- ICMPScanResult) {
@@ -202,8 +198,8 @@ func (icmpScanner *ICMPScanner) RecvICMP(packet gopacket.Packet) interface{} {
 		ip := common.PacketToIPv4(packet)
 		if ip != nil {
 			result.Results = append(result.Results, ICMPScanResult{
-				IP: ip.To4(),
-				IsActive: true,
+				IP:        ip.To4(),
+				IsActive:  true,
 				IsARPScan: false,
 			})
 			fmt.Println("Receive Reply Pakcet from:", ip.To4())
@@ -211,8 +207,6 @@ func (icmpScanner *ICMPScanner) RecvICMP(packet gopacket.Packet) interface{} {
 	}
 	return result
 }
-
-
 
 func (icmpScanner *ICMPScanner) Close() {
 	<-icmpScanner.Stop
