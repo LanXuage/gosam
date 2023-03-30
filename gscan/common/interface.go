@@ -1,11 +1,10 @@
 package common
 
 import (
-	"fmt"
-	"log"
 	"net"
 
 	"github.com/google/gopacket/pcap"
+	"go.uber.org/zap"
 )
 
 type GSInterface struct {
@@ -22,11 +21,11 @@ func getActiveInterfaces() *[]GSInterface {
 	gateways := GetGateways()
 	devs, err := pcap.FindAllDevs()
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("FindAllDevs failed", zap.Error(err))
 	}
 	ifs, err := net.Interfaces()
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("Net Interfaces failed", zap.Error(err))
 	}
 	for _, gateway := range gateways {
 		for _, dev := range devs {
@@ -45,19 +44,15 @@ func getActiveInterfaces() *[]GSInterface {
 					if i.Name != dev.Name {
 						continue
 					}
-					handle, err := pcap.OpenLive(i.Name, 65536, true, pcap.BlockForever)
-					if err != nil {
-						log.Fatal(err)
-					}
 					gsInterface := GSInterface{
 						Name:    i.Name,
 						Gateway: gateway,
 						Mask:    maskUint32,
-						Handle:  handle,
+						Handle:  GetHandle(i.Name),
 						HWAddr:  i.HardwareAddr,
 						IP:      addr.IP,
 					}
-					fmt.Println(gsInterface)
+					logger.Debug("Get gs iface", zap.Any("gsIface", gsInterface))
 					gsInterfaces = append(gsInterfaces, gsInterface)
 				}
 			}

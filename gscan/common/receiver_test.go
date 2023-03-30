@@ -24,7 +24,6 @@ func test(packet gopacket.Packet) interface{} {
 	}
 }
 
-
 func test1(packet gopacket.Packet) interface{} {
 	fmt.Println("test1")
 

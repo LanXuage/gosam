@@ -2,16 +2,14 @@ package icmp
 
 import (
 	"fmt"
-
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-
 	"gscan/arp"
 	"gscan/common"
 	"gscan/common/constant"
 	"log"
 	"net"
 
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
 
@@ -43,8 +41,6 @@ func New() *ICMPScanner {
 		AScanner: arp.New(),
 		Results:  make(ICMPResultMap),
 	}
-	icmpScanner.AScanner.ScanLocalNet()
-	<-icmpScanner.AScanner.GotGateway
 	return icmpScanner
 }
 
@@ -117,7 +113,7 @@ func (icmpScanner *ICMPScanner) GenerateTarget(targetCh chan<- ICMPTarget, ipLis
 				DstIP:  ip,
 				SrcMac: iface.HWAddr,
 				Handle: iface.Handle,
-				DstMac: icmpScanner.AScanner.AMap[common.IP2Uint32(iface.Gateway)],
+				DstMac: *icmpScanner.AScanner.AMap[common.IP2Uint32(iface.Gateway)],
 			}
 		}
 	}
