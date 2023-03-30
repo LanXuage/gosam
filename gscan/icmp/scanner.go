@@ -7,7 +7,6 @@ import (
 	"gscan/common/constant"
 	"log"
 	"net"
-	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -17,6 +16,7 @@ import (
 type ICMPScanner struct {
 	Stop     chan struct{}
 	AScanner *arp.ARPScanner
+	Results  ICMPResultMap
 }
 
 type ICMPTarget struct {
@@ -33,14 +33,13 @@ type ICMPScanResult struct {
 	IsARPScan bool
 }
 
-type ICMPScanResults struct {
-	Results []ICMPScanResult
-}
+type ICMPResultMap map[uint32]bool
 
 func New() *ICMPScanner {
 	icmpScanner := &ICMPScanner{
 		Stop:     make(chan struct{}),
 		AScanner: arp.New(),
+		Results:  make(ICMPResultMap),
 	}
 	return icmpScanner
 }
@@ -124,12 +123,8 @@ func (icmpScanner *ICMPScanner) Scan(targetCh <-chan ICMPTarget) {
 	defer close(icmpScanner.Stop)
 
 	for target := range targetCh {
-		//fmt.Println(target)
-		go icmpScanner.SendICMP(target)
+		icmpScanner.SendICMP(target)
 	}
-
-	time.Sleep(time.Second * 5)
-
 }
 
 func (ICMPScanner *ICMPScanner) PingLocalNet() {
@@ -143,6 +138,7 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 	for i := 0; i < len(ipList); i++ {
 		ipUint32 := common.IP2Uint32(ipList[i])
 		if icmpScanner.AScanner.AMap[ipUint32] != nil {
+			icmpScanner.Results[ipUint32] = true
 			resultCh <- ICMPScanResult{
 				IP:        ipList[i],
 				IsActive:  true,
@@ -160,7 +156,9 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 	go icmpScanner.Recv(resultCh)
 
 	fmt.Println("Start ICMP...")
-	icmpScanner.Scan(targetCh)
+	go icmpScanner.Scan(targetCh)
+
+	go icmpScanner.CheckIPList(ipList)
 
 	return resultCh
 }
@@ -168,44 +166,57 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 // 接收协程
 func (icmpScanner *ICMPScanner) Recv(resultCh chan<- ICMPScanResult) {
 	for r := range common.GetReceiver().Register("icmp", icmpScanner.RecvICMP) {
-		if results, ok := r.(ICMPScanResults); ok {
-			for _, result := range results.Results {
-				resultCh <- result
-			}
+		if result, ok := r.(ICMPScanResult); ok {
+			resultCh <- result
+		}
+	}
+}
+
+// 校验IPLIST
+func (icmpScanner *ICMPScanner) CheckIPList(ipList []net.IP) {
+	<-icmpScanner.Stop
+	for _, ip := range ipList {
+		uint32IP := common.IP2Uint32(ip)
+		if !icmpScanner.Results[uint32IP] {
+			icmpScanner.Results[uint32IP] = false
 		}
 	}
 }
 
 // ICMP接包协程
 func (icmpScanner *ICMPScanner) RecvICMP(packet gopacket.Packet) interface{} {
-	result := ICMPScanResults{
-		Results: make([]ICMPScanResult, 0),
-	}
 	icmpLayer := packet.Layer(layers.LayerTypeICMPv4)
-
 	if icmpLayer == nil {
-		return result
+		return nil
 	}
-
 	icmp, _ := icmpLayer.(*layers.ICMPv4)
 	if icmp == nil {
-		return result
+		return nil
 	}
 
 	if icmp.Id == constant.ICMPId &&
 		icmp.Seq == constant.ICMPSeq {
-		fmt.Println(icmp)
-		ip := common.PacketToIPv4(packet)
-		if ip != nil {
-			result.Results = append(result.Results, ICMPScanResult{
-				IP:        ip.To4(),
-				IsActive:  true,
-				IsARPScan: false,
-			})
-			fmt.Println("Receive Reply Pakcet from:", ip.To4())
+		if icmp.TypeCode.Type() == layers.ICMPv4TypeEchoReply &&
+			icmp.TypeCode.Code() == layers.ICMPv4CodeNet {
+			ip := common.PacketToIPv4(packet)
+			if ip != nil {
+				icmpScanner.Results[common.IP2Uint32(ip.To4())] = true
+				return ICMPScanResult{
+					IP:        ip.To4(),
+					IsActive:  true,
+					IsARPScan: false,
+				}
+			}
+		}
+		if icmp.TypeCode.Type() == layers.ICMPv4TypeDestinationUnreachable {
+			ip := common.PacketToIPv4(packet)
+			if ip != nil {
+				icmpScanner.Results[common.IP2Uint32(ip.To4())] = false
+				fmt.Printf("%s Unreacheable\n", ip.To4())
+			}
 		}
 	}
-	return result
+	return nil
 }
 
 func (icmpScanner *ICMPScanner) Close() {
