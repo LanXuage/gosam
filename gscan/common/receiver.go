@@ -1,11 +1,11 @@
 package common
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"go.uber.org/zap"
 )
 
 type Receiver struct {
@@ -28,7 +28,7 @@ func newReceiver() *Receiver {
 func (r *Receiver) init() {
 	for _, gsInterface := range *GetActiveInterfaces() {
 		src := gopacket.NewPacketSource(gsInterface.Handle, layers.LayerTypeEthernet)
-		fmt.Printf("start gsInterface %s\n", gsInterface.Name)
+		logger.Debug("Start receiver", zap.String("gsIface", gsInterface.Name))
 		go r.recv(src.Packets())
 	}
 }

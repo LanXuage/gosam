@@ -1,20 +1,18 @@
 package arp
 
 import (
-	"fmt"
+	"os"
 	"testing"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 func Test_ARPScanner(t *testing.T) {
-	zap.NewAtomicLevel().SetLevel(zap.DebugLevel)
+	os.Setenv("GSCAN_LOG_LEVEL", "development")
 	a := New()
 	defer a.Close()
 	go func() {
 		for result := range a.ScanLocalNet() {
-			fmt.Println(result)
+			t.Log(result)
 		}
 	}()
 	time.Sleep(5 * time.Second)

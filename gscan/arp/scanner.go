@@ -1,9 +1,7 @@
 package arp
 
 import (
-	"fmt"
 	"gscan/common"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -13,6 +11,8 @@ import (
 	"github.com/google/gopacket/pcap"
 	"go.uber.org/zap"
 )
+
+var logger = common.GetLogger()
 
 type ARPScanResult struct {
 	IP     net.IP           // 结果IP
@@ -35,7 +35,6 @@ type ARPScanner struct {
 	AMap     ARPMap                    // 获取到的IP <-> Mac 映射表
 	OMap     OUIMap                    // Mac前缀 <-> 厂商 映射表
 	Lock     sync.Mutex
-	Logger   *zap.Logger
 	TargetCh chan *Target
 	ResultCh chan *ARPScanResult
 }
@@ -48,10 +47,6 @@ type Target struct {
 }
 
 func New() *ARPScanner {
-	logger, err := zap.NewProduction()
-	if err != nil {
-		log.Fatal(err)
-	}
 	a := &ARPScanner{
 		Stop: make(chan struct{}),
 		Opts: gopacket.SerializeOptions{
@@ -64,12 +59,10 @@ func New() *ARPScanner {
 		Ifaces:   common.GetActiveInterfaces(),
 		TargetCh: make(chan *Target, 10),
 		ResultCh: make(chan *ARPScanResult, 10),
-		Logger:   logger,
 	}
 	go a.Recv()
 	go a.Scan()
 	for _, iface := range *a.Ifaces {
-		a.Logger.Info("iface", zap.Any("iface", iface))
 		a.TargetCh <- &Target{
 			SrcMac: iface.HWAddr,
 			SrcIP:  iface.IP,
@@ -86,7 +79,6 @@ func New() *ARPScanner {
 }
 
 func (a *ARPScanner) Close() {
-	a.Logger.Sync()
 	common.GetReceiver().Unregister("arp")
 	close(a.TargetCh)
 	close(a.ResultCh)
@@ -110,20 +102,18 @@ func (a *ARPScanner) GenerateTarget() {
 
 // 执行全局域网扫描
 func (a *ARPScanner) ScanLocalNet() chan *ARPScanResult {
-	fmt.Println("Start Generate")
+	logger.Debug("Start Generate")
+	// logger.Sync()
 	go a.GenerateTarget()
 	return a.ResultCh
 }
 
 // 接收协程
 func (a *ARPScanner) Recv() {
-	defer a.Logger.Sync()
 	defer close(a.ResultCh)
-	a.Logger.Info("Ready to Recv.")
 	for r := range common.GetReceiver().Register("arp", a.RecvARP) {
 		if results, ok := r.(ARPScanResults); ok {
 			for _, result := range results.Results {
-				a.Logger.Info("recv", zap.Any("result", result))
 				a.ResultCh <- result
 			}
 		}
@@ -133,8 +123,6 @@ func (a *ARPScanner) Recv() {
 // 扫描协程
 func (a *ARPScanner) Scan() {
 	defer close(a.Stop)
-	defer a.Logger.Sync()
-	a.Logger.Info("Ready to Scan.")
 	for target := range a.TargetCh {
 		a.SendARPReq(target)
 	}
@@ -142,7 +130,6 @@ func (a *ARPScanner) Scan() {
 
 // ARP发包
 func (a *ARPScanner) SendARPReq(target *Target) {
-	a.Logger.Info("sendArPReq", zap.Any("target", target))
 	ethLayer := &layers.Ethernet{
 		SrcMAC:       target.SrcMac,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
@@ -162,12 +149,12 @@ func (a *ARPScanner) SendARPReq(target *Target) {
 	buf := gopacket.NewSerializeBuffer()
 	err := gopacket.SerializeLayers(buf, a.Opts, ethLayer, arpLayer)
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("SerializeLayers Failed", zap.Error(err))
 	}
 	outgoingPacket := buf.Bytes()
 	err = target.Handle.WritePacketData(outgoingPacket)
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("WritePacketData Failed", zap.Error(err))
 	}
 }
 
@@ -194,7 +181,6 @@ func (a *ARPScanner) RecvARP(packet gopacket.Packet) interface{} {
 	if r, ok := a.generateResult(dstIP, dstMac); ok {
 		result.Results = append(result.Results, r)
 	}
-	a.Logger.Info("recv", zap.Any("result", result))
 	return result
 }
 
