@@ -23,8 +23,8 @@ type ICMPTarget struct {
 	SrcMac net.HardwareAddr // 发包的源物理地址
 	SrcIP  net.IP           // 发包的源协议IP
 	DstIP  net.IP           // 目的IP
+	DstMac net.HardwareAddr // 目的Mac
 	Handle *pcap.Handle     // 发包的具体句柄地址
-	DstMac net.HardwareAddr
 }
 
 type ICMPScanResult struct {
@@ -220,5 +220,5 @@ func (icmpScanner *ICMPScanner) RecvICMP(packet gopacket.Packet) interface{} {
 }
 
 func (icmpScanner *ICMPScanner) Close() {
-	<-icmpScanner.Stop
+	common.GetReceiver().Unregister("icmp")
 }
