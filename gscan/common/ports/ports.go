@@ -1,6 +1,7 @@
 package ports
 
 const (
+	DEFAULT_SOURCEPORT uint16 = 12345
 
 	// Default Ports for Databases
 	DEFAULT_SQLSERVER     uint16 = 1433

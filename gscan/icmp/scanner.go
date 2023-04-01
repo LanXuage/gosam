@@ -13,10 +13,12 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
+var arpInstance = arp.GetARPScanner()
+
 type ICMPScanner struct {
 	Stop     chan struct{}
-	AScanner *arp.ARPScanner
 	Results  ICMPResultMap
+	TargetCh chan *ICMPTarget
 }
 
 type ICMPTarget struct {
@@ -38,14 +40,14 @@ type ICMPResultMap map[uint32]bool
 func New() *ICMPScanner {
 	icmpScanner := &ICMPScanner{
 		Stop:     make(chan struct{}),
-		AScanner: arp.New(),
 		Results:  make(ICMPResultMap),
+		TargetCh: make(chan *ICMPTarget, 10),
 	}
 	return icmpScanner
 }
 
 // ICMP发包
-func (icmpScanner *ICMPScanner) SendICMP(target ICMPTarget) {
+func (icmpScanner *ICMPScanner) SendICMP(target *ICMPTarget) {
 	// 构建以太网层
 	ethLayer := &layers.Ethernet{
 		SrcMAC:       target.SrcMac,
@@ -98,31 +100,30 @@ func (icmpScanner *ICMPScanner) SendICMP(target ICMPTarget) {
 	}
 }
 
-func (icmpScanner *ICMPScanner) GenerateTarget(targetCh chan<- ICMPTarget, ipList []net.IP) {
-	defer close(targetCh)
-	if icmpScanner.AScanner.Ifaces == nil {
+func (icmpScanner *ICMPScanner) GenerateTarget(ipList []net.IP) {
+	defer close(icmpScanner.TargetCh)
+	if arpInstance.Ifaces == nil {
 		return
 	}
-	for _, iface := range *icmpScanner.AScanner.Ifaces {
+	for _, iface := range *arpInstance.Ifaces {
 		if len(ipList) == 0 {
 			return
 		}
 		for _, ip := range ipList {
-			targetCh <- ICMPTarget{
+			icmpScanner.TargetCh <- &ICMPTarget{
 				SrcIP:  iface.IP,
 				DstIP:  ip,
 				SrcMac: iface.HWAddr,
 				Handle: iface.Handle,
-				DstMac: *icmpScanner.AScanner.AMap[common.IP2Uint32(iface.Gateway)],
+				DstMac: *arpInstance.AMap[common.IP2Uint32(iface.Gateway)],
 			}
 		}
 	}
 }
 
-func (icmpScanner *ICMPScanner) Scan(targetCh <-chan ICMPTarget) {
+func (icmpScanner *ICMPScanner) Scan() {
 	defer close(icmpScanner.Stop)
-
-	for target := range targetCh {
+	for target := range icmpScanner.TargetCh {
 		icmpScanner.SendICMP(target)
 	}
 }
@@ -137,7 +138,7 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 
 	for i := 0; i < len(ipList); i++ {
 		ipUint32 := common.IP2Uint32(ipList[i])
-		if icmpScanner.AScanner.AMap[ipUint32] != nil {
+		if arpInstance.AMap[ipUint32] != nil {
 			icmpScanner.Results[ipUint32] = true
 			resultCh <- ICMPScanResult{
 				IP:        ipList[i],
@@ -149,14 +150,13 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 	}
 
 	fmt.Println("Start Generate...")
-	targetCh := make(chan ICMPTarget, 10)
-	go icmpScanner.GenerateTarget(targetCh, ipList)
+	go icmpScanner.GenerateTarget(ipList)
 
 	fmt.Println("Start Listen...")
 	go icmpScanner.Recv(resultCh)
 
 	fmt.Println("Start ICMP...")
-	go icmpScanner.Scan(targetCh)
+	go icmpScanner.Scan()
 
 	go icmpScanner.CheckIPList(ipList)
 

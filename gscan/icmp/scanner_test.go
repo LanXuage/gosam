@@ -17,16 +17,23 @@ func Test_ICMPScanner(t *testing.T) {
 	tmp := common.IPList2NetIPList(ipList)
 
 	go func() {
-		for res := range i.ScanList(tmp) {
-			if res.IsActive {
-				fmt.Printf("%s is Active\n", res.IP)
-			}
-			if !res.IsActive {
-				fmt.Printf("%s is Inactive\n", res.IP)
-			}
-		}
+		i.ScanList(tmp)
 	}()
 
 	time.Sleep(time.Second * 5)
+
+	ip := []uint32{}
+	for ipUint32 := range i.Results {
+		ip = append(ip, ipUint32)
+	}
+
+	for idx := 0; idx < len(i.Results); idx++ {
+		if i.Results[ip[idx]] {
+			fmt.Printf("%s is Active\n", common.Uint322IP(ip[idx]))
+		} else {
+			fmt.Printf("%s is Inactive\n", common.Uint322IP(ip[idx]))
+		}
+	}
+
 	t.Log(i.Results)
 }
