@@ -1,7 +1,9 @@
 package port
 
 import (
+	"fmt"
 	"gscan/common"
+	"gscan/common/ports"
 	"log"
 	"net"
 
@@ -14,13 +16,16 @@ type UDPScanner struct {
 	Stop     chan struct{}
 	Results  []UDPResult
 	ResultCh chan *UDPResult
+	TargetCh chan *UDPTarget
 }
 
 type UDPTarget struct {
 	SrcIP    net.IP
 	DstIP    net.IP
 	SrcPort  layers.UDPPort
-	DstPorts []layers.UDPPort
+	DstPorts []layers.TCPPort
+	SrcMac   net.HardwareAddr
+	DstMac   net.HardwareAddr
 	Handle   *pcap.Handle
 }
 
@@ -34,20 +39,77 @@ func InitialUDPScanner() *UDPScanner {
 		Stop:     make(chan struct{}),
 		Results:  []UDPResult{},
 		ResultCh: make(chan *UDPResult, 10),
+		TargetCh: make(chan *UDPTarget, 10),
 	}
 }
 
-func (u *UDPScanner) SendUDP(target UDPTarget) {
+func (u *UDPScanner) GenerateTarget(ipList []net.IP) {
+	defer close(u.TargetCh)
+
+	ifaces := common.GetActiveInterfaces()
+	if ifaces == nil || len(ipList) == 0 {
+		return
+	}
+
+	for _, iface := range *ifaces {
+		for _, ip := range ipList {
+			tmp := &UDPTarget{
+				SrcIP:    iface.IP,
+				SrcPort:  layers.UDPPort(ports.DEFAULT_SOURCEPORT),
+				DstIP:    ip,
+				DstPorts: *ports.GetDefaultPorts(),
+				SrcMac:   iface.HWAddr,
+				DstMac:   *arpInstance.AMap[common.IP2Uint32(iface.Gateway)],
+				Handle:   iface.Handle,
+			}
+			u.TargetCh <- tmp
+		}
+	}
+
+}
+
+func (u *UDPScanner) Scan() {
+	defer close(u.Stop)
+	for target := range u.TargetCh {
+		u.SendUDP(target)
+	}
+}
+
+func (u *UDPScanner) SendUDP(target *UDPTarget) {
 	udpBuffer := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
+
+	// 以太层
+	ethLayer := &layers.Ethernet{
+		SrcMAC:       target.SrcMac,
+		DstMAC:       target.DstMac,
+		EthernetType: layers.EthernetTypeIPv4,
+	}
+
+	// IP层
+	ipLayer := &layers.IPv4{
+		Version:  4,
+		TTL:      64,
+		SrcIP:    target.SrcIP,
+		DstIP:    target.DstIP,
+		Protocol: layers.IPProtocolUDP,
+	}
 
 	for _, port := range target.DstPorts {
 		udpLayer := &layers.UDP{
 			SrcPort: target.SrcPort,
-			DstPort: port,
+			DstPort: layers.UDPPort(port),
 		}
 
-		err := gopacket.SerializeLayers(udpBuffer, opts, udpLayer)
+		udpLayer.SetNetworkLayerForChecksum(ipLayer)
+
+		err := gopacket.SerializeLayers(
+			udpBuffer,
+			opts,
+			ethLayer,
+			ipLayer,
+			udpLayer,
+		)
 
 		if err != nil {
 			log.Fatal(err)
@@ -57,6 +119,9 @@ func (u *UDPScanner) SendUDP(target UDPTarget) {
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		// fmt.Println(udpBuffer)
+		fmt.Printf("Send ip: %s, port: %d\n", target.DstIP, port)
 	}
 
 }
@@ -83,4 +148,8 @@ func (u *UDPScanner) RecvUDP(packet gopacket.Packet) interface{} {
 	}
 
 	return nil
+}
+
+func (u *UDPScanner) CheckIPList(ipList []net.IP) {
+
 }

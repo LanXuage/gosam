@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"net"
 
 	"github.com/google/gopacket/pcap"
@@ -65,4 +66,14 @@ var gsInterface = getActiveInterfaces()
 
 func GetActiveInterfaces() *[]GSInterface {
 	return gsInterface
+}
+
+func GetInterfaceBySrcMac(srcMac net.HardwareAddr) *GSInterface {
+	for _, iface := range *getActiveInterfaces() {
+		if iface.HWAddr.String() == srcMac.String() {
+			fmt.Println(iface, srcMac)
+			return &iface
+		}
+	}
+	return nil
 }

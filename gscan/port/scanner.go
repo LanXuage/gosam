@@ -22,8 +22,8 @@ func (p *PortScan) Close() {
 	<-p.Stop
 }
 
-func (p *PortScan) TCPScan(ipList []net.IP) *TCPScanner {
-	tcp := InitialTCPScanner()
+func (p *PortScan) TCPScan(ipList []net.IP, scanType uint8) *TCPScanner {
+	tcp := InitialTCPScanner(scanType)
 
 	fmt.Println("Start Recv And Scan")
 	go tcp.Recv()
@@ -33,16 +33,29 @@ func (p *PortScan) TCPScan(ipList []net.IP) *TCPScanner {
 
 	go tcp.CheckIPList(ipList)
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(tcp.Timeout)
 
 	return tcp
 
 }
 
-func (p *PortScan) UDPScan(ipList []net.IP) {
+func (p *PortScan) UDPScan(ipList []net.IP) *UDPScanner {
 	udp := InitialUDPScanner()
 
+	fmt.Println("Start Recv")
 	go udp.Recv()
+
+	fmt.Println("Start Scan")
+	go udp.Scan()
+
+	fmt.Println("Start Generate")
+	go udp.GenerateTarget(ipList)
+
+	// go udp.CheckIPList(ipList)
+
+	time.Sleep(5 * time.Second)
+
+	return udp
 }
 
 func (p *PortScan) Recv() {

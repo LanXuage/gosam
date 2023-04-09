@@ -1,26 +1,28 @@
 package ports
 
+import "github.com/google/gopacket/layers"
+
 const (
-	DEFAULT_SOURCEPORT uint16 = 12345
+	DEFAULT_SOURCEPORT layers.TCPPort = 12345
 
 	// Default Ports for Databases
-	DEFAULT_SQLSERVER     uint16 = 1433
-	DEFAULT_MYSQL         uint16 = 3306
-	DEFAULT_ORACLE        uint16 = 1521
-	DEFAULT_REDIS         uint16 = 6379
-	DEFAULT_MONGODB       uint16 = 27017
-	DEFAULT_DB2           uint16 = 5000
-	DEFAULT_POSTGRESQL    uint16 = 5432
-	DEFAULT_ELASTICSEARCH uint16 = 9200
+	DEFAULT_SQLSERVER     layers.TCPPort = 1433
+	DEFAULT_MYSQL         layers.TCPPort = 3306
+	DEFAULT_ORACLE        layers.TCPPort = 1521
+	DEFAULT_REDIS         layers.TCPPort = 6379
+	DEFAULT_MONGODB       layers.TCPPort = 27017
+	DEFAULT_DB2           layers.TCPPort = 5000
+	DEFAULT_POSTGRESQL    layers.TCPPort = 5432
+	DEFAULT_ELASTICSEARCH layers.TCPPort = 9200
 
 	// Default Ports for otherservice
-	DEFAULT_FTP       uint16 = 21
-	DEFAULT_SSH       uint16 = 22
-	DEFAULT_SMB       uint16 = 445
-	DEFAULT_RDP       uint16 = 3389
-	DEFAULT_WEB       uint16 = 80
-	DEFAULT_WEB_HTTPS uint16 = 443
-	DEFAULT_WEBLOGIC  uint16 = 7001
-	DEFAULT_WEB2      uint16 = 8080
-	DEFAULT_WEB3      uint16 = 8888
+	DEFAULT_FTP       layers.TCPPort = 21
+	DEFAULT_SSH       layers.TCPPort = 22
+	DEFAULT_SMB       layers.TCPPort = 445
+	DEFAULT_RDP       layers.TCPPort = 3389
+	DEFAULT_WEB       layers.TCPPort = 80
+	DEFAULT_WEB_HTTPS layers.TCPPort = 443
+	DEFAULT_WEBLOGIC  layers.TCPPort = 7001
+	DEFAULT_WEB2      layers.TCPPort = 8080
+	DEFAULT_WEB3      layers.TCPPort = 8888
 )
