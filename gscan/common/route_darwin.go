@@ -24,7 +24,6 @@ func GetGateways() []net.IP {
 	// 第二次为mac地址：查询是否存在mac地址，通过匹配null关键字
 	gateways := []net.IP{}
 
-
 	for _, iface := range ifs {
 		if out := Exec(fmt.Sprintf(baseCommand, iface.Port)); out != nil {
 
@@ -39,7 +38,7 @@ func GetGateways() []net.IP {
 
 			// 第二次mac地址值校验
 			macAddr := bytes.Split(tmp[len(tmp)-2], []byte(": "))
-			if bytes.Index(macAddr[1], []byte("null")) != -1{
+			if bytes.Index(macAddr[1], []byte("null")) != -1 {
 				continue
 			}
 
@@ -53,12 +52,12 @@ func GetGateways() []net.IP {
 
 }
 
-func GetInterfaces() []Interface{
+func GetInterfaces() []Interface {
 	out := Exec("networksetup -listnetworkserviceorder | grep \"Hardware Port\"")
 	res := bytes.Split(out, []byte("\n"))
 
 	ifs := []Interface{}
-	for _, r := range res{
+	for _, r := range res {
 		r2 := bytes.Split(r, []byte(", "))
 
 		if len(r2) == 2 {

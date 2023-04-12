@@ -12,6 +12,10 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	REGISTER_NAME = "ARP"
+)
+
 var logger = common.GetLogger()
 
 type ARPScanResult struct {
@@ -79,7 +83,7 @@ func New() *ARPScanner {
 }
 
 func (a *ARPScanner) Close() {
-	common.GetReceiver().Unregister("arp")
+	common.GetReceiver().Unregister(REGISTER_NAME)
 	close(a.TargetCh)
 	close(a.ResultCh)
 }
@@ -111,7 +115,7 @@ func (a *ARPScanner) ScanLocalNet() chan *ARPScanResult {
 // 接收协程
 func (a *ARPScanner) Recv() {
 	defer close(a.ResultCh)
-	for r := range common.GetReceiver().Register("arp", a.RecvARP) {
+	for r := range common.GetReceiver().Register(REGISTER_NAME, a.RecvARP) {
 		if results, ok := r.(ARPScanResults); ok {
 			for _, result := range results.Results {
 				a.ResultCh <- result
