@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap"
 )
 
-
 func GetGateways() []net.IP {
 	ret := []net.IP{}
 	netlinks, err := syscall.NetlinkRIB(syscall.RTM_GETROUTE, syscall.AF_INET)
