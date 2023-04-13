@@ -1,6 +1,7 @@
-package gscan
+package gscan_test
 
 import (
+	"gscan"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -18,14 +19,14 @@ func TestUnitTestSuite(t *testing.T) {
 
 func (s *UnitTestSuite) Test_SampleGreetingsWorkflow() {
 	env := s.NewTestWorkflowEnvironment()
-	var a *Activities
+	var a *gscan.Activities
 	//env.RegisterActivity(a)
 
 	env.OnActivity(a.GetGreeting).Return("Hello", nil)
 	env.OnActivity(a.GetName).Return("World", nil)
 	env.OnActivity(a.SayGreeting, "Hello", "World").Return("Hello World!", nil)
 
-	env.ExecuteWorkflow(ScanWorkflow)
+	env.ExecuteWorkflow(gscan.ScanWorkflow)
 
 	s.True(env.IsWorkflowCompleted())
 	s.NoError(env.GetWorkflowError())
