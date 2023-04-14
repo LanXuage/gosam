@@ -9,7 +9,7 @@ import (
 var ip = net.ParseIP("192.168.1.2").To4()
 var inIp = net.ParseIP("192.168.1.1").To4()
 var outIp = net.ParseIP("192.168.0.45").To4()
-var mask = common.IP2Uint32(net.ParseIP("255.255.255.0").To4())
+var mask = common.IPv42Uint32(net.ParseIP("255.255.255.0").To4())
 
 func TestCheckIPisIPNet(t *testing.T) {
 	if !common.CheckIPisIPNet(ip, inIp, mask) {

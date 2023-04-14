@@ -2,6 +2,7 @@ package common
 
 import (
 	"net"
+	"net/netip"
 	"os/exec"
 	"strings"
 
@@ -17,7 +18,19 @@ func GetOuiPrefix(mac net.HardwareAddr) (string, string) {
 	return ret1, ret2
 }
 
-func IP2Uint32(ip net.IP) uint32 {
+func Fnv32(key netip.Addr) uint32 {
+	hash := uint32(2166136261)
+	const prime32 = uint32(16777619)
+	d := key.AsSlice()
+	keyLength := len(d)
+	for i := 0; i < keyLength; i++ {
+		hash *= prime32
+		hash ^= uint32(d[i])
+	}
+	return hash
+}
+
+func IPv42Uint32(ip net.IP) uint32 {
 	var sum uint32
 	sum += uint32(ip[0]) << 24
 	sum += uint32(ip[1]) << 16
@@ -26,7 +39,7 @@ func IP2Uint32(ip net.IP) uint32 {
 }
 
 func IPMask2Uint32(mask net.IPMask) uint32 {
-	return IP2Uint32(net.IP(mask))
+	return IPv42Uint32(net.IP(mask))
 }
 
 func Uint322IP(ipUint32 uint32) net.IP {
@@ -34,7 +47,7 @@ func Uint322IP(ipUint32 uint32) net.IP {
 }
 
 func IsSameLAN(ip net.IP, otherIp net.IP, mask uint32) bool {
-	return IP2Uint32(ip)&mask == IP2Uint32(otherIp)&mask
+	return IPv42Uint32(ip)&mask == IPv42Uint32(otherIp)&mask
 }
 
 func PacketToIPv4(packet gopacket.Packet) net.IP {

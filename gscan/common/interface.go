@@ -2,6 +2,7 @@ package common
 
 import (
 	"net"
+	"net/netip"
 
 	"github.com/google/gopacket/pcap"
 	"go.uber.org/zap"
@@ -9,10 +10,10 @@ import (
 
 type GSInterface struct {
 	Name    string           // 接口名称
-	Gateway net.IP           // 接口网关IP
-	Mask    uint32           // 接口掩码
+	Gateway netip.Addr       // 接口网关IP
+	Mask    netip.Prefix     // 接口掩码
 	HWAddr  net.HardwareAddr // 接口物理地址
-	IP      net.IP           // 接口IP
+	IP      netip.Addr       // 接口IP
 	Handle  *pcap.Handle     // 接口pcap句柄
 }
 
@@ -36,8 +37,20 @@ func getActiveInterfaces() *[]GSInterface {
 				if addr.IP == nil {
 					continue
 				}
-				maskUint32 := IPMask2Uint32(addr.Netmask)
-				if !IsSameLAN(addr.IP, gateway, maskUint32) {
+				ones, _ := addr.Netmask.Size()
+				ip, ok := netip.AddrFromSlice(addr.IP)
+				if !ok {
+					continue
+				}
+				ipPrefix, err := ip.Prefix(ones)
+				if err != nil {
+					continue
+				}
+				gwPrefix, err := ip.Prefix(ones)
+				if err != nil {
+					continue
+				}
+				if ipPrefix != gwPrefix {
 					continue
 				}
 				for _, i := range ifs {
@@ -47,14 +60,15 @@ func getActiveInterfaces() *[]GSInterface {
 					gsInterface := GSInterface{
 						Name:    i.Name,
 						Gateway: gateway,
-						Mask:    maskUint32,
+						Mask:    ipPrefix,
 						Handle:  GetHandle(i.Name),
 						HWAddr:  i.HardwareAddr,
-						IP:      addr.IP,
+						IP:      ip,
 					}
 					logger.Debug("Get gs iface", zap.Any("gsIface", gsInterface))
 					gsInterfaces = append(gsInterfaces, gsInterface)
 				}
+
 			}
 		}
 	}

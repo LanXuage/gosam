@@ -3,14 +3,14 @@
 package common
 
 import (
-	"net"
+	"net/netip"
 	"syscall"
 
 	"go.uber.org/zap"
 )
 
-func GetGateways() []net.IP {
-	ret := []net.IP{}
+func GetGateways() []netip.Addr {
+	ret := []netip.Addr{}
 	netlinks, err := syscall.NetlinkRIB(syscall.RTM_GETROUTE, syscall.AF_INET)
 	if err != nil {
 		logger.Error("NetlinkRIB failed", zap.Error(err))
@@ -27,7 +27,9 @@ func GetGateways() []net.IP {
 			}
 			for _, attr := range attrs {
 				if attr.Attr.Type == syscall.RTA_GATEWAY {
-					ret = append(ret, attr.Value)
+					if g, ok := netip.AddrFromSlice(attr.Value); ok {
+						ret = append(ret, g)
+					}
 				}
 			}
 		}
