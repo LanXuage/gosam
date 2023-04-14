@@ -4,41 +4,42 @@ import (
 	"fmt"
 	"gscan/common"
 	"gscan/common/ports"
+	"os"
 	"testing"
 	"time"
 )
 
-func Test_PortScan(t *testing.T) {
+var testIPList = []string{
+	"106.14.112.92",
+	"14.119.104.189",
 }
 
+var testTCPScanPorts = *ports.GetDefaultPorts()
+
 func Test_HALFTCP(t *testing.T) {
+	os.Setenv("GSCAN_LOG_LEVEL", "development")
 	p := New()
 	defer p.Close()
 
-	ipList := []string{
-		"106.14.112.92",
-	}
+	tmp := common.IPList2NetIPList(testIPList)
+	tcp := p.TCPScan(tmp, testTCPScanPorts, TYPE_HALFTCP)
 
-	tmp := common.IPList2NetIPList(ipList)
-
-	tcp := p.TCPScan(tmp, TYPE_HALFTCP)
-
-	time.Sleep(time.Second * 5)
+	time.Sleep(tcp.Timeout)
 
 	ip := []uint32{}
 	for ipUint32 := range tcp.Results {
 		ip = append(ip, ipUint32)
 	}
-	fmt.Println(tcp.Results)
+	t.Log(tcp.Results)
 
 	for _, _ip := range ip {
-		fmt.Printf("IP %s Port Scan Result:\n", common.Uint322IP(_ip))
+		t.Logf("IP %s Port Scan Result:\n", common.Uint322IP(_ip))
 		portsMap := tcp.Results[_ip]
-		for _, port := range *ports.GetDefaultPorts() {
+		for _, port := range testTCPScanPorts {
 			if portsMap[port] {
-				fmt.Printf("%d is seem to Open\n", port)
+				t.Logf("%d is seem to Open\n", port)
 			} else {
-				fmt.Printf("%d is seem to Close\n", port)
+				t.Logf("%d is seem to Close\n", port)
 			}
 		}
 		fmt.Printf("--------------------------------\n")
@@ -46,33 +47,30 @@ func Test_HALFTCP(t *testing.T) {
 }
 
 func Test_FULLTCP(t *testing.T) {
+	os.Setenv("GSCAN_LOG_LEVEL", "development")
 	p := New()
 	defer p.Close()
 
-	ipList := []string{
-		"106.14.112.92",
-	}
+	tmp := common.IPList2NetIPList(testIPList)
 
-	tmp := common.IPList2NetIPList(ipList)
+	tcp := p.TCPScan(tmp, testTCPScanPorts, TYPE_FULLTCP)
 
-	tcp := p.TCPScan(tmp, TYPE_FULLTCP)
-
-	time.Sleep(time.Second * 5)
+	time.Sleep(tcp.Timeout)
 
 	ip := []uint32{}
 	for ipUint32 := range tcp.Results {
 		ip = append(ip, ipUint32)
 	}
-	fmt.Println(tcp.Results)
+	t.Log(tcp.Results)
 
 	for _, _ip := range ip {
-		fmt.Printf("IP %s Port Scan Result:\n", common.Uint322IP(_ip))
+		t.Logf("IP %s Port Scan Result:\n", common.Uint322IP(_ip))
 		portsMap := tcp.Results[_ip]
-		for _, port := range *ports.GetDefaultPorts() {
+		for _, port := range testTCPScanPorts {
 			if portsMap[port] {
-				fmt.Printf("%d is seem to Open\n", port)
+				t.Logf("%d is Open\n", port)
 			} else {
-				fmt.Printf("%d is seem to Close\n", port)
+				t.Logf("%d is Close\n", port)
 			}
 		}
 		fmt.Printf("--------------------------------\n")
@@ -80,19 +78,15 @@ func Test_FULLTCP(t *testing.T) {
 }
 
 func Test_UDP(t *testing.T) {
+	os.Setenv("GSCAN_LOG_LEVEL", "development")
 	p := New()
 	defer p.Close()
 
-	ipList := []string{
-		"106.14.112.92",
-		"192.168.2.155",
-	}
-
-	tmp := common.IPList2NetIPList(ipList)
+	tmp := common.IPList2NetIPList(testIPList)
 
 	udp := p.UDPScan(tmp)
 
-	time.Sleep(time.Second * 5)
+	time.Sleep(udp.Timeout)
 
 	ip := []uint32{}
 	for ipUint32 := range udp.Results {

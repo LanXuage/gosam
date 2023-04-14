@@ -1,10 +1,14 @@
 package port
 
 import (
-	"fmt"
+	"gscan/common"
 	"net"
 	"time"
+
+	"github.com/google/gopacket/layers"
 )
+
+var logger = common.GetLogger()
 
 type PortScan struct {
 	Stop chan struct{}
@@ -22,16 +26,16 @@ func (p *PortScan) Close() {
 	<-p.Stop
 }
 
-func (p *PortScan) TCPScan(ipList []net.IP, scanType uint8) *TCPScanner {
-	tcp := InitialTCPScanner(scanType)
+func (p *PortScan) TCPScan(ipList []net.IP, scanPorts []layers.TCPPort, scanType uint8) *TCPScanner {
+	tcp := InitialTCPScanner(scanType, ipList, scanPorts)
 
-	fmt.Println("Start Recv And Scan")
+	logger.Debug("Start Recv And Scan")
 	go tcp.Recv()
 	go tcp.Scan()
 
-	go tcp.GenerateTarget(ipList)
+	go tcp.GenerateTarget()
 
-	go tcp.CheckIPList(ipList)
+	go tcp.CheckIPList()
 
 	time.Sleep(tcp.Timeout)
 
@@ -42,26 +46,18 @@ func (p *PortScan) TCPScan(ipList []net.IP, scanType uint8) *TCPScanner {
 func (p *PortScan) UDPScan(ipList []net.IP) *UDPScanner {
 	udp := InitialUDPScanner()
 
-	fmt.Println("Start Recv")
+	logger.Debug("Start Recv")
 	go udp.Recv()
 
-	fmt.Println("Start Scan")
+	logger.Debug("Start Scan")
 	go udp.Scan()
 
-	fmt.Println("Start Generate")
+	logger.Debug("Start Generate")
 	go udp.GenerateTarget(ipList)
 
 	// go udp.CheckIPList(ipList)
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(udp.Timeout)
 
 	return udp
-}
-
-func (p *PortScan) Recv() {
-
-}
-
-func (p *PortScan) ScanList(ipList []net.IP) {
-	fmt.Println("Start Recv...")
 }

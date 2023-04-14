@@ -10,13 +10,13 @@ import (
 )
 
 type Interface struct {
-	Port string
-	Name string
+	Port       string
+	DeviceName string
 }
 
 func GetGateways() []net.IP {
 	ifs := GetInterfaces()
-	//fmt.Println(ifs)
+	// logger.Sugar().Debug(ifs)
 	baseCommand := "networksetup -getinfo \"%s\""
 
 	// 做两次筛选
@@ -28,25 +28,41 @@ func GetGateways() []net.IP {
 		if out := Exec(fmt.Sprintf(baseCommand, iface.Port)); out != nil {
 
 			// 第一次关键字过滤
-			if bytes.Index(out, []byte("IP address")) == -1 ||
-				bytes.Index(out, []byte("Subnet mask")) == -1 ||
-				bytes.Index(out, []byte("Router")) == -1 {
+			if !bytes.Contains(out, []byte("IP address")) ||
+				!bytes.Contains(out, []byte("Subnet mask")) ||
+				!bytes.Contains(out, []byte("Router")) {
 				continue
 			}
 
-			tmp := bytes.Split(out, []byte{0x0a})[1:] // 通过换行符进行分割
+			// 查询结果模板：
+			// DHCP Configuration
+			// IP address: 192.168.2.137
+			// Subnet mask: 255.255.255.0
+			// Router: 192.168.2.1
+			// Client ID:
+			// IPv6: Automatic
+			// IPv6 IP address: none
+			// IPv6 Router: none
+			// Wi-Fi ID: bc:d0:74:2c:5b:11
+
+			infoByte := bytes.Split(out, []byte{0x0a})[1:] // 通过换行符进行分割
 
 			// 第二次mac地址值校验
-			macAddr := bytes.Split(tmp[len(tmp)-2], []byte(": "))
-			if bytes.Index(macAddr[1], []byte("null")) != -1 {
+			macAddr := bytes.Split(infoByte[len(infoByte)-2], []byte(": ")) //
+			logger.Sugar().Debug(string(macAddr[1]))
+
+			if bytes.Contains(macAddr[1], []byte("null")) {
 				continue
 			}
 
 			// 获取网卡其他信息
-			gateway := fmt.Sprintf("%s", bytes.Split(tmp[2], []byte(": "))[1])
+			gateway := string(bytes.Split(infoByte[2], []byte(": "))[1])
+			// logger.Debug(gateway)
 			gateways = append(gateways, net.ParseIP(gateway).To4())
 		}
 	}
+
+	fmt.Println(gateways)
 
 	return gateways
 
@@ -61,17 +77,18 @@ func GetInterfaces() []Interface {
 		r2 := bytes.Split(r, []byte(", "))
 
 		if len(r2) == 2 {
-			r3 := bytes.Split(r2[0], []byte(": "))
-			r4 := bytes.Split(r2[1], []byte(": "))
+			r3 := bytes.Split(r2[0], []byte(": ")) // 取网卡端口
+
+			r4 := bytes.Split(r2[1], []byte(": ")) // 取网卡设备名
 			r5 := bytes.Replace(r4[1], []byte(")"), []byte(""), -1)
-			//fmt.Printf("%s %s\n", r3[1], r5)
+			// fmt.Printf("%s %s\n", r3[1], r5)
 			ifs = append(ifs, Interface{
-				Port: fmt.Sprintf("%s", r3[1]),
-				Name: fmt.Sprintf("%s", r5),
+				Port:       string(r3[1]),
+				DeviceName: string(r5),
 			})
 		}
 
 	}
-
+	// logger.Sugar().Debug(ifs)
 	return ifs
 }

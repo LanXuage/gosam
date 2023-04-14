@@ -1,17 +1,16 @@
 package port
 
 import (
-	"fmt"
 	"gscan/arp"
 	"gscan/common"
 	"gscan/common/ports"
-	"log"
 	"net"
 	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"go.uber.org/zap"
 )
 
 var arpInstance = arp.GetARPScanner()
@@ -23,6 +22,8 @@ const (
 
 type TCPScanner struct {
 	Stop       chan struct{}                      // 扫描状态
+	IPList     []net.IP                           // 扫描的IP列表
+	ScanPorts  []layers.TCPPort                   // 扫描的端口列表
 	Results    map[uint32]map[layers.TCPPort]bool // IP <-> Ports，Port <-> Bool的二维映射
 	ResultCh   chan *TCPResult                    // 扫描结果Channel
 	TargetCh   chan *TCPTarget                    // 扫描目标Channel
@@ -53,35 +54,46 @@ type TCPResult struct {
 	Ports map[uint16]bool
 }
 
-func InitialTCPScanner(scanType uint8) *TCPScanner {
+func InitialTCPScanner(scanType uint8, ipList []net.IP, scanPorts []layers.TCPPort) *TCPScanner {
+	if len(ipList) == 0 || len(scanPorts) == 0 {
+		logger.Error("IPList or ScanPorts is NULL")
+	}
+
 	return &TCPScanner{
-		Stop:     make(chan struct{}),
-		Results:  make(map[uint32]map[layers.TCPPort]bool),
-		ResultCh: make(chan *TCPResult, 10),
-		TargetCh: make(chan *TCPTarget, 10),
-		Timeout:  time.Second * 5,
-		ScanType: scanType,
+		Stop:      make(chan struct{}),
+		Results:   make(map[uint32]map[layers.TCPPort]bool),
+		ResultCh:  make(chan *TCPResult, 10),
+		TargetCh:  make(chan *TCPTarget, 10),
+		Timeout:   time.Second * 3,
+		ScanType:  scanType,
+		IPList:    ipList,
+		ScanPorts: scanPorts,
 	}
 }
 
-func (t *TCPScanner) GenerateTarget(ipList []net.IP) {
+func (t *TCPScanner) GenerateTarget() {
 
 	defer close(t.TargetCh)
 	ifaces := common.GetActiveInterfaces()
 
-	if ifaces == nil || len(ipList) == 0 {
+	if ifaces == nil || len(t.IPList) == 0 {
 		return
 	}
 
 	for _, iface := range *ifaces {
-		for _, ip := range ipList {
+		logger.Sugar().Debugf("%d", common.IP2Uint32(iface.Gateway))
+		gatewayMac := *arpInstance.AMap[common.IP2Uint32(iface.Gateway)]
+		if gatewayMac.String() == "00:00:00:00:00:00" {
+			logger.Fatal("Get Gateway Mac Address Failed")
+		}
+		for _, ip := range t.IPList {
 			tmp := &TCPTarget{
 				SrcIP:    iface.IP,
 				SrcPort:  layers.TCPPort(ports.DEFAULT_SOURCEPORT),
 				DstIP:    ip,
-				DstPorts: *ports.GetDefaultPorts(),
+				DstPorts: t.ScanPorts,
 				SrcMac:   iface.HWAddr,
-				DstMac:   *arpInstance.AMap[common.IP2Uint32(iface.Gateway)],
+				DstMac:   gatewayMac,
 				Ack:      0,
 				Handle:   iface.Handle,
 			}
@@ -96,13 +108,6 @@ func (t *TCPScanner) Scan() {
 	defer close(t.Stop)
 	for target := range t.TargetCh {
 		t.SendSYNTCP(target)
-	}
-}
-
-func (t *TCPScanner) GeneratePorts() []layers.TCPPort {
-	return []layers.TCPPort{
-		layers.TCPPort(ports.DEFAULT_WEB),
-		layers.TCPPort(ports.DEFAULT_WEB_HTTPS),
 	}
 }
 
@@ -154,13 +159,13 @@ func (t *TCPScanner) SendSYNTCP(target *TCPTarget) {
 		)
 
 		if err != nil {
-			log.Fatal(err)
+			logger.Error("SerializeLayers Failed", zap.Error(err))
 		}
 
 		err = target.Handle.WritePacketData(buffer.Bytes())
 
 		if err != nil {
-			log.Fatal(err)
+			logger.Error("WritePacketData Failed", zap.Error(err))
 		}
 	}
 
@@ -208,7 +213,7 @@ func (t *TCPScanner) RecvTCP(packet gopacket.Packet) interface{} {
 
 	if tcp.DstPort == layers.TCPPort(ports.DEFAULT_SOURCEPORT) {
 
-		fmt.Printf("Receive From %s's Port %d\n", ip.SrcIP, tcp.SrcPort)
+		logger.Sugar().Infof("Receive From %s's Port %d\n", ip.SrcIP, tcp.SrcPort)
 
 		if tcp.SYN && t.ScanType == TYPE_FULLTCP { // 第一次收到的包
 			dstPort := []layers.TCPPort{}
@@ -248,18 +253,17 @@ func (t *TCPScanner) RecvTCP(packet gopacket.Packet) interface{} {
 	return nil
 }
 
-func (t *TCPScanner) CheckIPList(ipList []net.IP) {
+func (t *TCPScanner) CheckIPList() {
 	<-t.Stop
-	scanports := *ports.GetDefaultPorts()
-	for _, ip := range ipList {
+	for _, ip := range t.IPList {
 		uint32IP := common.IP2Uint32(ip)
 		if t.Results[uint32IP] == nil {
 			t.Results[uint32IP] = make(map[layers.TCPPort]bool)
-			for _, port := range scanports {
+			for _, port := range t.ScanPorts {
 				t.Results[uint32IP][port] = false
 			}
 		} else {
-			for _, port := range scanports {
+			for _, port := range t.ScanPorts {
 				if !t.Results[uint32IP][port] {
 					t.Results[uint32IP][port] = false
 				}

@@ -1,24 +1,31 @@
 package icmp
 
 import (
-	"fmt"
 	"gscan/arp"
 	"gscan/common"
 	"gscan/common/constant"
 	"log"
 	"net"
+	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"go.uber.org/zap"
+)
+
+const (
+	REGISTER_NAME string = "icmp"
 )
 
 var arpInstance = arp.GetARPScanner()
+var logger = common.GetLogger()
 
 type ICMPScanner struct {
 	Stop     chan struct{}
 	Results  ICMPResultMap
 	TargetCh chan *ICMPTarget
+	Timeout  time.Duration
 }
 
 type ICMPTarget struct {
@@ -42,6 +49,7 @@ func New() *ICMPScanner {
 		Stop:     make(chan struct{}),
 		Results:  make(ICMPResultMap),
 		TargetCh: make(chan *ICMPTarget, 10),
+		Timeout:  time.Second * 5,
 	}
 	return icmpScanner
 }
@@ -88,11 +96,10 @@ func (icmpScanner *ICMPScanner) SendICMP(target *ICMPTarget) {
 	)
 
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("Combine Buffer Error", zap.Error(err))
 	}
 
-	//fmt.Println(buffer)
-	fmt.Println("Ping", target.DstIP)
+	logger.Sugar().Infof("Ping IP: %s", target.DstIP.String())
 
 	err = target.Handle.WritePacketData(buffer.Bytes())
 	if err != nil {
@@ -103,21 +110,29 @@ func (icmpScanner *ICMPScanner) SendICMP(target *ICMPTarget) {
 func (icmpScanner *ICMPScanner) GenerateTarget(ipList []net.IP) {
 	defer close(icmpScanner.TargetCh)
 	if arpInstance.Ifaces == nil {
+		logger.Fatal("Get Ifaces Failed")
 		return
 	}
+
+	if len(ipList) == 0 {
+		logger.Fatal("IPList is NULL")
+		return
+	}
+
 	for _, iface := range *arpInstance.Ifaces {
-		if len(ipList) == 0 {
-			return
-		}
-		for _, ip := range ipList {
-			icmpScanner.TargetCh <- &ICMPTarget{
-				SrcIP:  iface.IP,
-				DstIP:  ip,
-				SrcMac: iface.HWAddr,
-				Handle: iface.Handle,
-				DstMac: *arpInstance.AMap[common.IP2Uint32(iface.Gateway)],
+		if *arpInstance.AMap[common.IP2Uint32(iface.Gateway)] != nil {
+
+			for _, ip := range ipList {
+				icmpScanner.TargetCh <- &ICMPTarget{
+					SrcIP:  iface.IP,
+					DstIP:  ip,
+					SrcMac: iface.HWAddr,
+					Handle: iface.Handle,
+					DstMac: *arpInstance.AMap[common.IP2Uint32(iface.Gateway)],
+				}
 			}
 		}
+
 	}
 }
 
@@ -126,10 +141,6 @@ func (icmpScanner *ICMPScanner) Scan() {
 	for target := range icmpScanner.TargetCh {
 		icmpScanner.SendICMP(target)
 	}
-}
-
-func (ICMPScanner *ICMPScanner) PingLocalNet() {
-
 }
 
 func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
@@ -149,13 +160,13 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 		}
 	}
 
-	fmt.Println("Start Generate...")
+	logger.Debug("Start Generate...")
 	go icmpScanner.GenerateTarget(ipList)
 
-	fmt.Println("Start Listen...")
+	logger.Debug("Start Listen...")
 	go icmpScanner.Recv(resultCh)
 
-	fmt.Println("Start ICMP...")
+	logger.Debug("Start ICMP...")
 	go icmpScanner.Scan()
 
 	go icmpScanner.CheckIPList(ipList)
@@ -165,7 +176,7 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 
 // 接收协程
 func (icmpScanner *ICMPScanner) Recv(resultCh chan<- ICMPScanResult) {
-	for r := range common.GetReceiver().Register("icmp", icmpScanner.RecvICMP) {
+	for r := range common.GetReceiver().Register(REGISTER_NAME, icmpScanner.RecvICMP) {
 		if result, ok := r.(ICMPScanResult); ok {
 			resultCh <- result
 		}
@@ -208,17 +219,17 @@ func (icmpScanner *ICMPScanner) RecvICMP(packet gopacket.Packet) interface{} {
 				}
 			}
 		}
-		if icmp.TypeCode.Type() == layers.ICMPv4TypeDestinationUnreachable {
-			ip := common.PacketToIPv4(packet)
-			if ip != nil {
-				icmpScanner.Results[common.IP2Uint32(ip.To4())] = false
-				fmt.Printf("%s Unreacheable\n", ip.To4())
-			}
-		}
+		// if icmp.TypeCode.Type() == layers.ICMPv4TypeDestinationUnreachable {
+		// 	ip := common.PacketToIPv4(packet)
+		// 	if ip != nil {
+		// 		icmpScanner.Results[common.IP2Uint32(ip.To4())] = false
+		// 		logger.Sugar().Infof("%s Unreacheable\n", ip.To4())
+		// 	}
+		// }
 	}
 	return nil
 }
 
 func (icmpScanner *ICMPScanner) Close() {
-	common.GetReceiver().Unregister("icmp")
+	common.GetReceiver().Unregister(REGISTER_NAME)
 }

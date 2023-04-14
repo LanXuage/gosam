@@ -1,15 +1,15 @@
 package port
 
 import (
-	"fmt"
 	"gscan/common"
 	"gscan/common/ports"
-	"log"
 	"net"
+	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"go.uber.org/zap"
 )
 
 type UDPScanner struct {
@@ -17,6 +17,7 @@ type UDPScanner struct {
 	Results  []UDPResult
 	ResultCh chan *UDPResult
 	TargetCh chan *UDPTarget
+	Timeout  time.Duration
 }
 
 type UDPTarget struct {
@@ -40,6 +41,7 @@ func InitialUDPScanner() *UDPScanner {
 		Results:  []UDPResult{},
 		ResultCh: make(chan *UDPResult, 10),
 		TargetCh: make(chan *UDPTarget, 10),
+		Timeout:  time.Second * 5,
 	}
 }
 
@@ -112,16 +114,17 @@ func (u *UDPScanner) SendUDP(target *UDPTarget) {
 		)
 
 		if err != nil {
-			log.Fatal(err)
+			logger.Error("SerializeLayers Failed", zap.Error(err))
 		}
 
 		err = target.Handle.WritePacketData(udpBuffer.Bytes())
+
 		if err != nil {
-			log.Fatal(err)
+			logger.Error("WritePacketData Failed", zap.Error(err))
 		}
 
 		// fmt.Println(udpBuffer)
-		fmt.Printf("Send ip: %s, port: %d\n", target.DstIP, port)
+		logger.Sugar().Infof("Send ip: %s, port: %d\n", target.DstIP, port)
 	}
 
 }
