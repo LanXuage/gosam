@@ -175,6 +175,9 @@ func (a *ARPScanner) RecvARP(packet gopacket.Packet) interface{} {
 	if !ok {
 		return result
 	}
+	if arp.Operation != layers.ARPReply {
+		return result
+	}
 	srcMac := net.HardwareAddr(arp.SourceHwAddress)
 	srcIP := net.IP(arp.SourceProtAddress)
 	if r, ok := a.generateResult(srcIP, srcMac); ok {
