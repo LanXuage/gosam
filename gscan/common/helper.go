@@ -1,7 +1,6 @@
 package common
 
 import (
-	"bytes"
 	"net"
 	"os/exec"
 	"strings"
@@ -64,7 +63,7 @@ func IPList2NetIPList(ipList []string) []net.IP {
 	return s
 }
 
-// 重写IPNet.Contains函数
+// Deprecated: Use common.IsSameLAN instead.
 func CheckIPisIPNet(ip net.IP, gateway net.IP, mask uint32) bool {
 
 	ipArray := ip.To4()
@@ -83,11 +82,7 @@ func CheckIPisIPNet(ip net.IP, gateway net.IP, mask uint32) bool {
 }
 
 func Exec(command string) []byte {
-	in := bytes.NewBuffer(nil)
-	cmd := exec.Command("sh")
-
-	cmd.Stdin = in
-	in.WriteString(command)
+	cmd := exec.Command(command)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		logger.Error("Exec command failed", zap.String("cmd", command), zap.Error(err))

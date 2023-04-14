@@ -1,14 +1,15 @@
-package icmp
+package icmp_test
 
 import (
 	"fmt"
 	"gscan/common"
+	"gscan/icmp"
 	"testing"
 	"time"
 )
 
 func Test_ICMPScanner(t *testing.T) {
-	i := New()
+	i := icmp.New()
 	defer i.Close()
 
 	ipList := []string{"13.107.21.200", "120.78.212.208",
