@@ -11,6 +11,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"go.uber.org/zap"
 )
 
@@ -25,6 +26,7 @@ type ICMPScanner struct {
 	Stop     chan struct{}
 	Results  ICMPResultMap
 	TargetCh chan *ICMPTarget
+	ResultCh chan *ICMPScanResult
 	Timeout  time.Duration
 }
 
@@ -42,20 +44,28 @@ type ICMPScanResult struct {
 	IsARPScan bool
 }
 
-type ICMPResultMap map[uint32]bool
+type ICMPResultMap *cmap.ConcurrentMap[string, bool]
 
 func New() *ICMPScanner {
+	_rMap := cmap.New[bool]()
+	rMap := ICMPResultMap(&_rMap)
+
 	icmpScanner := &ICMPScanner{
 		Stop:     make(chan struct{}),
-		Results:  make(ICMPResultMap),
 		TargetCh: make(chan *ICMPTarget, 10),
-		Timeout:  time.Second * 5,
+		ResultCh: make(chan *ICMPScanResult, 15),
+		Results:  rMap,
+		Timeout:  time.Second * 4,
 	}
 	return icmpScanner
 }
 
 // ICMP发包
 func (icmpScanner *ICMPScanner) SendICMP(target *ICMPTarget) {
+	payload := []byte("Send ICMP by YuSec")
+	buffer := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
+
 	// 构建以太网层
 	ethLayer := &layers.Ethernet{
 		SrcMAC:       target.SrcMac,
@@ -80,12 +90,6 @@ func (icmpScanner *ICMPScanner) SendICMP(target *ICMPTarget) {
 		Seq:      constant.ICMPSeq,
 	}
 
-	//payload := []byte("Send ICMP by YuSec")
-	//icmpLayer.Payload = payload
-
-	buffer := gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
-
 	// 合并数据包并进行序列化
 	err := gopacket.SerializeLayers(
 		buffer,
@@ -93,13 +97,14 @@ func (icmpScanner *ICMPScanner) SendICMP(target *ICMPTarget) {
 		ethLayer,
 		ipLayer,
 		icmpLayer,
+		gopacket.Payload(payload),
 	)
 
 	if err != nil {
 		logger.Error("Combine Buffer Error", zap.Error(err))
 	}
 
-	logger.Sugar().Infof("Ping IP: %s", target.DstIP.String())
+	logger.Sugar().Debugf("Ping IP: %s", target.DstIP.String())
 
 	err = target.Handle.WritePacketData(buffer.Bytes())
 	if err != nil {
@@ -147,24 +152,15 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 
 	resultCh := make(chan ICMPScanResult, 15)
 
-	for i := 0; i < len(ipList); i++ {
-		ipUint32 := common.IP2Uint32(ipList[i])
-		if arpInstance.AMap[ipUint32] != nil {
-			icmpScanner.Results[ipUint32] = true
-			resultCh <- ICMPScanResult{
-				IP:        ipList[i],
-				IsActive:  true,
-				IsARPScan: true,
-			}
-			ipList = append(ipList[:i], ipList[(i+1):]...) // 抹除ARP Scanner后的结果, 不计入生产者中
-		}
-	}
+	ipList = icmpScanner.filterIPList(ipList)
+
+	logger.Sugar().Debug("ScanList:", ipList)
 
 	logger.Debug("Start Generate...")
 	go icmpScanner.GenerateTarget(ipList)
 
 	logger.Debug("Start Listen...")
-	go icmpScanner.Recv(resultCh)
+	go icmpScanner.Recv()
 
 	logger.Debug("Start ICMP...")
 	go icmpScanner.Scan()
@@ -174,22 +170,29 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 	return resultCh
 }
 
-// 接收协程
-func (icmpScanner *ICMPScanner) Recv(resultCh chan<- ICMPScanResult) {
-	for r := range common.GetReceiver().Register(REGISTER_NAME, icmpScanner.RecvICMP) {
-		if result, ok := r.(ICMPScanResult); ok {
-			resultCh <- result
+func (icmpScanner *ICMPScanner) filterIPList(ipList []net.IP) []net.IP {
+	for i := 0; i < len(ipList); i++ {
+		ipUint32 := common.IP2Uint32(ipList[i])
+		if arpInstance.AMap[ipUint32] != nil {
+			(*icmpScanner.Results).Set(ipList[i].String(), true)
+			icmpScanner.ResultCh <- &ICMPScanResult{
+				IP:        ipList[i],
+				IsActive:  true,
+				IsARPScan: true,
+			}
+			ipList = append(ipList[:i], ipList[(i+1):]...) // 抹除ARP Scanner后的结果, 不计入生产者中
 		}
 	}
+
+	return ipList
+
 }
 
-// 校验IPLIST
-func (icmpScanner *ICMPScanner) CheckIPList(ipList []net.IP) {
-	<-icmpScanner.Stop
-	for _, ip := range ipList {
-		uint32IP := common.IP2Uint32(ip)
-		if !icmpScanner.Results[uint32IP] {
-			icmpScanner.Results[uint32IP] = false
+// 接收协程
+func (icmpScanner *ICMPScanner) Recv() {
+	for r := range common.GetReceiver().Register(REGISTER_NAME, icmpScanner.RecvICMP) {
+		if result, ok := r.(ICMPScanResult); ok {
+			icmpScanner.ResultCh <- &result
 		}
 	}
 }
@@ -211,7 +214,7 @@ func (icmpScanner *ICMPScanner) RecvICMP(packet gopacket.Packet) interface{} {
 			icmp.TypeCode.Code() == layers.ICMPv4CodeNet {
 			ip := common.PacketToIPv4(packet)
 			if ip != nil {
-				icmpScanner.Results[common.IP2Uint32(ip.To4())] = true
+				(*icmpScanner.Results).Set(ip.To4().String(), true)
 				return ICMPScanResult{
 					IP:        ip.To4(),
 					IsActive:  true,
@@ -219,15 +222,18 @@ func (icmpScanner *ICMPScanner) RecvICMP(packet gopacket.Packet) interface{} {
 				}
 			}
 		}
-		// if icmp.TypeCode.Type() == layers.ICMPv4TypeDestinationUnreachable {
-		// 	ip := common.PacketToIPv4(packet)
-		// 	if ip != nil {
-		// 		icmpScanner.Results[common.IP2Uint32(ip.To4())] = false
-		// 		logger.Sugar().Infof("%s Unreacheable\n", ip.To4())
-		// 	}
-		// }
 	}
 	return nil
+}
+
+// 校验IPLIST
+func (icmpScanner *ICMPScanner) CheckIPList(ipList []net.IP) {
+	<-icmpScanner.Stop
+	for _, ip := range ipList {
+		if _, ok := (*icmpScanner.Results).Get(ip.String()); ok {
+			(*icmpScanner.Results).Set(ip.String(), false)
+		}
+	}
 }
 
 func (icmpScanner *ICMPScanner) Close() {

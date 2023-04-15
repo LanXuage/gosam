@@ -14,7 +14,8 @@ func Test_ICMPScanner(t *testing.T) {
 
 	testIPList := []string{"13.107.21.200", "120.78.212.208",
 		"183.6.50.84", "192.168.31.1", "192.168.31.100",
-		"14.119.104.189"}
+		"14.119.104.189", "106.14.112.92", "192.168.1.9",
+		"192.168.2.134", "192.168.2.110", "192.168.2.200"}
 
 	tmp := common.IPList2NetIPList(testIPList)
 
@@ -24,18 +25,12 @@ func Test_ICMPScanner(t *testing.T) {
 
 	time.Sleep(i.Timeout)
 
-	ip := []uint32{}
-	for ipUint32 := range i.Results {
-		ip = append(ip, ipUint32)
-	}
-
-	for idx := 0; idx < len(i.Results); idx++ {
-		if i.Results[ip[idx]] {
-			t.Logf("%s is Active\n", common.Uint322IP(ip[idx]))
+	t.Log("ICMP Results:")
+	for _, ip := range testIPList {
+		if _, ok := (*i.Results).Get(ip); ok {
+			t.Logf("%s is Active\n", ip)
 		} else {
-			t.Logf("%s is Inactive\n", common.Uint322IP(ip[idx]))
+			t.Logf("%s is InActive\n", ip)
 		}
 	}
-
-	t.Log(i.Results)
 }
