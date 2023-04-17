@@ -17,6 +17,8 @@ type GSInterface struct {
 	Handle  *pcap.Handle     // 接口pcap句柄
 }
 
+var localhost, _ = netip.ParseAddr("127.0.0.1")
+
 func getActiveInterfaces() *[]GSInterface {
 	gsInterfaces := make([]GSInterface, 0)
 	gateways := GetGateways()
@@ -39,7 +41,7 @@ func getActiveInterfaces() *[]GSInterface {
 				}
 				ones, _ := addr.Netmask.Size()
 				ip, ok := netip.AddrFromSlice(addr.IP)
-				if !ok {
+				if !ok || ip == localhost {
 					continue
 				}
 				ipPrefix, err := ip.Prefix(ones)
@@ -47,10 +49,7 @@ func getActiveInterfaces() *[]GSInterface {
 					continue
 				}
 				gwPrefix, err := ip.Prefix(ones)
-				if err != nil {
-					continue
-				}
-				if ipPrefix != gwPrefix {
+				if err != nil || ipPrefix != gwPrefix {
 					continue
 				}
 				for _, i := range ifs {
