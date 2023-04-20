@@ -15,10 +15,6 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	REGISTER_NAME string = "icmp"
-)
-
 var arpInstance = arp.GetARPScanner()
 var logger = common.GetLogger()
 
@@ -190,7 +186,7 @@ func (icmpScanner *ICMPScanner) filterIPList(ipList []net.IP) []net.IP {
 
 // 接收协程
 func (icmpScanner *ICMPScanner) Recv() {
-	for r := range common.GetReceiver().Register(REGISTER_NAME, icmpScanner.RecvICMP) {
+	for r := range common.GetReceiver().Register(constant.ICMPREGISTER_NAME, icmpScanner.RecvICMP) {
 		if result, ok := r.(ICMPScanResult); ok {
 			icmpScanner.ResultCh <- &result
 		}
@@ -237,5 +233,5 @@ func (icmpScanner *ICMPScanner) CheckIPList(ipList []net.IP) {
 }
 
 func (icmpScanner *ICMPScanner) Close() {
-	common.GetReceiver().Unregister(REGISTER_NAME)
+	common.GetReceiver().Unregister(constant.ICMPREGISTER_NAME)
 }

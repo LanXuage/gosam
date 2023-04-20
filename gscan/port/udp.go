@@ -2,6 +2,7 @@ package port
 
 import (
 	"gscan/common"
+	"gscan/common/constant"
 	"gscan/common/ports"
 	"net"
 	"time"
@@ -131,7 +132,7 @@ func (u *UDPScanner) SendUDP(target *UDPTarget) {
 
 func (u *UDPScanner) Recv() {
 	defer close(u.ResultCh)
-	for r := range common.GetReceiver().Register("udp", u.RecvUDP) {
+	for r := range common.GetReceiver().Register(constant.UDPREGISTER_NAME, u.RecvUDP) {
 		if result, ok := r.(*UDPResult); ok {
 			u.ResultCh <- result
 		}
@@ -155,4 +156,9 @@ func (u *UDPScanner) RecvUDP(packet gopacket.Packet) interface{} {
 
 func (u *UDPScanner) CheckIPList(ipList []net.IP) {
 
+}
+
+func (u *UDPScanner) Close() {
+	<-u.Stop
+	common.GetReceiver().Unregister(constant.UDPREGISTER_NAME)
 }

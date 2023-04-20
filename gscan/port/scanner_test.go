@@ -1,17 +1,18 @@
 package port
 
 import (
-	"fmt"
 	"gscan/common"
+	"gscan/common/constant"
 	"gscan/common/ports"
 	"os"
 	"testing"
 	"time"
 )
 
-var testIPList = []string{
-	"106.14.112.92",
-	"14.119.104.189",
+var testIPList = []string{"13.107.21.200", "120.78.212.208",
+	"183.6.50.84", "192.168.31.1", "192.168.31.100",
+	"14.119.104.189", "106.14.112.92", "192.168.1.9",
+	"192.168.2.134", "192.168.2.110", "192.168.2.200",
 }
 
 var testTCPScanPorts = *ports.GetDefaultPorts()
@@ -22,27 +23,21 @@ func Test_HALFTCP(t *testing.T) {
 	defer p.Close()
 
 	tmp := common.IPList2NetIPList(testIPList)
-	tcp := p.TCPScan(tmp, testTCPScanPorts, TYPE_HALFTCP)
+	tcp := p.TCPScan(tmp, testTCPScanPorts, constant.TYPE_HALFTCP)
 
 	time.Sleep(tcp.Timeout)
 
-	ip := []uint32{}
-	for ipUint32 := range tcp.Results {
-		ip = append(ip, ipUint32)
-	}
-	t.Log(tcp.Results)
-
-	for _, _ip := range ip {
-		t.Logf("IP %s Port Scan Result:\n", common.Uint322IP(_ip))
-		portsMap := tcp.Results[_ip]
-		for _, port := range testTCPScanPorts {
-			if portsMap[port] {
-				t.Logf("%d is seem to Open\n", port)
-			} else {
-				t.Logf("%d is seem to Close\n", port)
+	for _, ip := range testIPList {
+		logger.Sugar().Debugf("IP %s result:", ip)
+		if portList, ok := (*tcp.Results).Get(ip); portList != nil && ok {
+			for _, port := range tcp.ScanPorts {
+				if status, _ := portList.Get(port.String()); status {
+					t.Logf("Port %s is seem open", port)
+				} else {
+					t.Logf("Port %s is seem close", port)
+				}
 			}
 		}
-		fmt.Printf("--------------------------------\n")
 	}
 }
 
@@ -53,27 +48,21 @@ func Test_FULLTCP(t *testing.T) {
 
 	tmp := common.IPList2NetIPList(testIPList)
 
-	tcp := p.TCPScan(tmp, testTCPScanPorts, TYPE_FULLTCP)
+	tcp := p.TCPScan(tmp, testTCPScanPorts, constant.TYPE_FULLTCP)
 
 	time.Sleep(tcp.Timeout)
 
-	ip := []uint32{}
-	for ipUint32 := range tcp.Results {
-		ip = append(ip, ipUint32)
-	}
-	t.Log(tcp.Results)
-
-	for _, _ip := range ip {
-		t.Logf("IP %s Port Scan Result:\n", common.Uint322IP(_ip))
-		portsMap := tcp.Results[_ip]
-		for _, port := range testTCPScanPorts {
-			if portsMap[port] {
-				t.Logf("%d is Open\n", port)
-			} else {
-				t.Logf("%d is Close\n", port)
+	for _, ip := range testIPList {
+		logger.Sugar().Debugf("IP %s result:", ip)
+		if portList, ok := (*tcp.Results).Get(ip); portList != nil && ok {
+			for _, port := range tcp.ScanPorts {
+				if status, _ := portList.Get(port.String()); status {
+					t.Logf("Port %s is open", port)
+				} else {
+					t.Logf("Port %s is close", port)
+				}
 			}
 		}
-		fmt.Printf("--------------------------------\n")
 	}
 }
 
@@ -93,6 +82,6 @@ func Test_UDP(t *testing.T) {
 		ip = append(ip, uint32(ipUint32))
 	}
 
-	fmt.Println(ip)
+	t.Log(ip)
 
 }
