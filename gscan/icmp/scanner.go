@@ -106,7 +106,7 @@ func (icmpScanner *ICMPScanner) GenerateTarget(targetCh chan<- ICMPTarget, ipLis
 		if len(ipList) == 0 {
 			return
 		}
-		dstMacAddr, _ := icmpScanner.AScanner.AMap.Get(common.IPv42Uint32(iface.Gateway))
+		dstMacAddr, _ := icmpScanner.AScanner.AMap.Get(common.IP2Uint32(iface.Gateway))
 		for _, ip := range ipList {
 			targetCh <- ICMPTarget{
 				SrcIP:  iface.IP,
@@ -136,7 +136,7 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 	resultCh := make(chan ICMPScanResult, 15)
 
 	for i := 0; i < len(ipList); i++ {
-		ipUint32 := common.IPv42Uint32(ipList[i])
+		ipUint32 := common.IP2Uint32(ipList[i])
 		if _, ok := icmpScanner.AScanner.AMap.Get(ipUint32); ok {
 			icmpScanner.Results.Set(ipUint32, true)
 			resultCh <- ICMPScanResult{
@@ -176,7 +176,7 @@ func (icmpScanner *ICMPScanner) Recv(resultCh chan<- ICMPScanResult) {
 func (icmpScanner *ICMPScanner) CheckIPList(ipList []net.IP) {
 	<-icmpScanner.Stop
 	for _, ip := range ipList {
-		uint32IP := common.IPv42Uint32(ip)
+		uint32IP := common.IP2Uint32(ip)
 		if _, ok := icmpScanner.Results.Get(uint32IP); !ok {
 			icmpScanner.Results.Set(uint32IP, false)
 		}
@@ -200,7 +200,7 @@ func (icmpScanner *ICMPScanner) RecvICMP(packet gopacket.Packet) interface{} {
 			icmp.TypeCode.Code() == layers.ICMPv4CodeNet {
 			ip := common.PacketToIPv4(packet)
 			if ip != nil {
-				icmpScanner.Results.Set(common.IPv42Uint32(ip.To4()), true)
+				icmpScanner.Results.Set(common.IP2Uint32(ip.To4()), true)
 				return ICMPScanResult{
 					IP:        ip.To4(),
 					IsActive:  true,
@@ -211,7 +211,7 @@ func (icmpScanner *ICMPScanner) RecvICMP(packet gopacket.Packet) interface{} {
 		if icmp.TypeCode.Type() == layers.ICMPv4TypeDestinationUnreachable {
 			ip := common.PacketToIPv4(packet)
 			if ip != nil {
-				icmpScanner.Results.Set(common.IPv42Uint32(ip.To4()), false)
+				icmpScanner.Results.Set(common.IP2Uint32(ip.To4()), false)
 				fmt.Printf("%s Unreacheable\n", ip.To4())
 			}
 		}

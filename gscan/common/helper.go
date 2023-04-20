@@ -30,7 +30,7 @@ func Fnv32(key netip.Addr) uint32 {
 	return hash
 }
 
-func IPv42Uint32(ip net.IP) uint32 {
+func IP2Uint32(ip net.IP) uint32 {
 	var sum uint32
 	sum += uint32(ip[0]) << 24
 	sum += uint32(ip[1]) << 16
@@ -39,7 +39,7 @@ func IPv42Uint32(ip net.IP) uint32 {
 }
 
 func IPMask2Uint32(mask net.IPMask) uint32 {
-	return IPv42Uint32(net.IP(mask))
+	return IP2Uint32(net.IP(mask))
 }
 
 func Uint322IP(ipUint32 uint32) net.IP {
@@ -47,7 +47,7 @@ func Uint322IP(ipUint32 uint32) net.IP {
 }
 
 func IsSameLAN(ip net.IP, otherIp net.IP, mask uint32) bool {
-	return IPv42Uint32(ip)&mask == IPv42Uint32(otherIp)&mask
+	return IP2Uint32(ip)&mask == IP2Uint32(otherIp)&mask
 }
 
 func PacketToIPv4(packet gopacket.Packet) net.IP {

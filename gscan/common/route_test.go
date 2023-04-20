@@ -6,5 +6,6 @@ import (
 )
 
 func TestGetGateways(t *testing.T) {
-	t.Log(common.GetGateways())
+	a := common.Gways()
+	t.Log(a[0])
 }

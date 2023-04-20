@@ -35,11 +35,15 @@ type ARPScanResults struct {
 }
 
 type ARPScanner struct {
-	Stop     chan struct{}                                    // ARP 扫描器状态
-	Opts     gopacket.SerializeOptions                        // 包序列化选项
-	Timeout  time.Duration                                    // 抓包超时时间
-	Ifaces   *[]common.GSInterface                            // 可用接口列表
-	AMap     cmap.ConcurrentMap[netip.Addr, net.HardwareAddr] // 获取到的IP <-> Mac 映射表
+	Stop    chan struct{}             // ARP 扫描器状态
+	Opts    gopacket.SerializeOptions // 包序列化选项
+	Timeout time.Duration             // 抓包超时时间
+	// Deprecated: Use Ifas instead.
+	Ifaces *[]common.GSInterface // 可用接口列表
+	Ifas   *[]common.GSIface     // 可用接口列表
+	// Deprecated: Use AHMap instead.
+	AMap     cmap.ConcurrentMap[uint32, *net.HardwareAddr]    // 获取到的IP <-> Mac 映射表
+	AHMap    cmap.ConcurrentMap[netip.Addr, net.HardwareAddr] // 获取到的IP <-> Mac 映射表
 	OMap     map[string]string                                // Mac前缀 <-> 厂商 映射表
 	Lock     sync.Mutex
 	TargetCh chan *Target
@@ -62,14 +66,16 @@ func New() *ARPScanner {
 		},
 		Timeout:  3 * time.Second,
 		OMap:     common.GetOui(),
-		AMap:     cmap.NewWithCustomShardingFunction[netip.Addr, net.HardwareAddr](common.Fnv32),
+		AMap:     cmap.NewWithCustomShardingFunction[uint32, *net.HardwareAddr](func(key uint32) uint32 { return key }),
+		AHMap:    cmap.NewWithCustomShardingFunction[netip.Addr, net.HardwareAddr](common.Fnv32),
 		Ifaces:   common.GetActiveInterfaces(),
+		Ifas:     common.GetActiveIfaces(),
 		TargetCh: make(chan *Target, 10),
 		ResultCh: make(chan *ARPScanResult, 10),
 	}
 	go a.Recv()
 	go a.Scan()
-	for _, iface := range *a.Ifaces {
+	for _, iface := range *a.Ifas {
 		a.TargetCh <- &Target{
 			SrcMac: iface.HWAddr,
 			SrcIP:  iface.IP,
@@ -93,14 +99,17 @@ func (a *ARPScanner) Close() {
 
 // 目标生产协程
 func (a *ARPScanner) GenerateTarget() {
-	for _, iface := range *a.Ifaces {
-		ipU32 := common.IPv42Uint32(iface.IP)
-		start := iface.Mask & ipU32
-		for i := start + 1; i < start+^iface.Mask; i++ {
+	for _, iface := range *a.Ifas {
+		cIp := iface.Mask.Addr()
+		for {
+			cIp := cIp.Next()
+			if !cIp.IsValid() || !iface.Mask.Contains(cIp) {
+				break
+			}
 			a.TargetCh <- &Target{
 				SrcMac: iface.HWAddr,
 				SrcIP:  iface.IP,
-				DstIP:  common.Uint322IP(i),
+				DstIP:  cIp,
 				Handle: iface.Handle,
 			}
 		}
@@ -144,14 +153,19 @@ func (a *ARPScanner) SendARPReq(target *Target) {
 	}
 	arpLayer := &layers.ARP{
 		AddrType:          layers.LinkTypeEthernet,
-		Protocol:          layers.EthernetTypeIPv4,
 		HwAddressSize:     0x6,
-		ProtAddressSize:   0x4,
 		Operation:         layers.ARPRequest,
 		SourceHwAddress:   target.SrcMac,
-		SourceProtAddress: target.SrcIP.To4(),
+		SourceProtAddress: target.SrcIP.AsSlice(),
 		DstHwAddress:      ARP_BROADCAST,
-		DstProtAddress:    target.DstIP.To4(),
+		DstProtAddress:    target.DstIP.AsSlice(),
+	}
+	if target.SrcIP.Is4() {
+		arpLayer.ProtAddressSize = 0x4
+		arpLayer.Protocol = layers.EthernetTypeIPv4
+	} else {
+		arpLayer.ProtAddressSize = 0x16
+		arpLayer.Protocol = layers.EthernetTypeIPv6
 	}
 	buf := gopacket.NewSerializeBuffer()
 	err := gopacket.SerializeLayers(buf, a.Opts, ethLayer, arpLayer)
@@ -182,23 +196,21 @@ func (a *ARPScanner) RecvARP(packet gopacket.Packet) interface{} {
 		return result
 	}
 	srcMac := net.HardwareAddr(arp.SourceHwAddress)
-	srcIP := net.IP(arp.SourceProtAddress)
+	srcIP, _ := netip.AddrFromSlice(arp.SourceProtAddress)
 	if r, ok := a.generateResult(srcIP, srcMac); ok {
 		result.Results = append(result.Results, r)
 	}
 	dstMac := net.HardwareAddr(arp.DstHwAddress)
-	dstIP := net.IP(arp.DstProtAddress)
+	dstIP, _ := netip.AddrFromSlice(arp.DstProtAddress)
 	if r, ok := a.generateResult(dstIP, dstMac); ok {
 		result.Results = append(result.Results, r)
 	}
 	return result
 }
 
-func (a *ARPScanner) generateResult(srcIP net.IP, srcMac net.HardwareAddr) (*ARPScanResult, bool) {
-	logger.Debug("generateResult", zap.Any("srcIP", srcIP))
-	logger.Debug("", zap.Any("fnv32", common.Fnv32(&srcIP)%32))
-	if _, ok := a.AMap.Get(&srcIP); !ok {
-		logger.Debug("aaaaaaaaaaaaa")
+func (a *ARPScanner) generateResult(srcIP netip.Addr, srcMac net.HardwareAddr) (*ARPScanResult, bool) {
+	srcIPU32 := common.IP2Uint32(srcIP.AsSlice())
+	if _, ok := a.AHMap.Get(srcIP); !ok {
 		prefix1, prefix2 := common.GetOuiPrefix(srcMac)
 		vendor := a.OMap[prefix2]
 		if len(vendor) == 0 {
@@ -209,7 +221,8 @@ func (a *ARPScanner) generateResult(srcIP net.IP, srcMac net.HardwareAddr) (*ARP
 			Mac:    srcMac,
 			Vendor: vendor,
 		}
-		a.AMap.Set(&srcIP, &srcMac)
+		a.AMap.Set(srcIPU32, &srcMac)
+		a.AHMap.Set(srcIP, srcMac)
 		return result, true
 	}
 	return nil, false
