@@ -2,6 +2,7 @@ package common
 
 import (
 	"net"
+	"net/netip"
 	"os/exec"
 	"strings"
 
@@ -15,6 +16,18 @@ func GetOuiPrefix(mac net.HardwareAddr) (string, string) {
 	ret1 := strings.ToUpper(strings.Replace(mac.String()[:8], ":", "", -1))
 	ret2 := strings.ToUpper(strings.Replace(mac.String()[:13], ":", "", -1))
 	return ret1, ret2
+}
+
+func Fnv32(key netip.Addr) uint32 {
+	hash := uint32(2166136261)
+	const prime32 = uint32(16777619)
+	d := key.AsSlice()
+	keyLength := len(d)
+	for i := 0; i < keyLength; i++ {
+		hash *= prime32
+		hash ^= uint32(d[i])
+	}
+	return hash
 }
 
 func IP2Uint32(ip net.IP) uint32 {
