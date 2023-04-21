@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"net"
 	"net/netip"
 
@@ -136,6 +137,16 @@ var gsInterface = getActiveInterfaces()
 // Deprecated: Use common.GetActiveIfaces instead.
 func GetActiveInterfaces() *[]GSInterface {
 	return gsInterface
+}
+
+func GetInterfaceBySrcMac(srcMac net.HardwareAddr) *GSInterface {
+	for _, iface := range *getActiveInterfaces() {
+		if iface.HWAddr.String() == srcMac.String() {
+			fmt.Println(iface, srcMac)
+			return &iface
+		}
+	}
+	return nil
 }
 
 var gsIfaces = getActiveIfaces()

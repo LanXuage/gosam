@@ -9,7 +9,7 @@ import (
 
 func Test_ARPScanner(t *testing.T) {
 	os.Setenv("GSCAN_LOG_LEVEL", "development")
-	a := arp.New()
+	a := arp.GetARPScanner()
 	defer a.Close()
 	go func() {
 		for result := range a.ScanLocalNet() {

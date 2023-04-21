@@ -19,5 +19,5 @@ func TestICMPScanner(t *testing.T) {
 		}
 	}()
 	time.Sleep(time.Second * 5)
-	t.Log(i.Results.Items())
+	t.Log(i.Results)
 }

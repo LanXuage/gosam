@@ -57,7 +57,7 @@ type Target struct {
 	Handle *pcap.Handle     // 发包的具体句柄地址
 }
 
-func New() *ARPScanner {
+func newARPScanner() *ARPScanner {
 	a := &ARPScanner{
 		Stop: make(chan struct{}),
 		Opts: gopacket.SerializeOptions{
@@ -226,4 +226,10 @@ func (a *ARPScanner) generateResult(srcIP netip.Addr, srcMac net.HardwareAddr) (
 		return result, true
 	}
 	return nil, false
+}
+
+var instance = newARPScanner()
+
+func GetARPScanner() *ARPScanner {
+	return instance
 }

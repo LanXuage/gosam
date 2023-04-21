@@ -6,8 +6,10 @@ require go.temporal.io/sdk v1.21.1
 
 require (
 	github.com/google/gopacket v1.1.19
+	github.com/panjf2000/ants/v2 v2.7.2
 	github.com/pborman/uuid v1.2.1
 	github.com/stretchr/testify v1.8.1
+	go.uber.org/zap v1.24.0
 )
 
 require (
@@ -28,7 +30,6 @@ require (
 	go.temporal.io/api v1.16.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
-	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
