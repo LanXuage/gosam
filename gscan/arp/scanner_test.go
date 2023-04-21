@@ -1,6 +1,7 @@
-package arp
+package arp_test
 
 import (
+	"gscan/arp"
 	"os"
 	"testing"
 	"time"
@@ -8,7 +9,7 @@ import (
 
 func Test_ARPScanner(t *testing.T) {
 	os.Setenv("GSCAN_LOG_LEVEL", "development")
-	a := GetARPScanner()
+	a := arp.GetARPScanner()
 	defer a.Close()
 	go func() {
 		for result := range a.ScanLocalNet() {
@@ -16,5 +17,5 @@ func Test_ARPScanner(t *testing.T) {
 		}
 	}()
 	time.Sleep(5 * time.Second)
-	t.Log(a.AMap)
+	t.Log(a.AMap.Items())
 }

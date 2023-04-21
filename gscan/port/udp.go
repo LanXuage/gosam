@@ -5,6 +5,7 @@ import (
 	"gscan/common/constant"
 	"gscan/common/ports"
 	"net"
+	"net/netip"
 	"time"
 
 	"github.com/google/gopacket"
@@ -56,13 +57,15 @@ func (u *UDPScanner) GenerateTarget(ipList []net.IP) {
 
 	for _, iface := range *ifaces {
 		for _, ip := range ipList {
+			ig, _ := netip.AddrFromSlice(iface.Gateway)
+			igMac, _ := arpInstance.AHMap.Get(ig)
 			tmp := &UDPTarget{
 				SrcIP:    iface.IP,
 				SrcPort:  layers.UDPPort(ports.DEFAULT_SOURCEPORT),
 				DstIP:    ip,
 				DstPorts: *ports.GetDefaultPorts(),
 				SrcMac:   iface.HWAddr,
-				DstMac:   *arpInstance.AMap[common.IP2Uint32(iface.Gateway)],
+				DstMac:   igMac,
 				Handle:   iface.Handle,
 			}
 			u.TargetCh <- tmp

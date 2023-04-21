@@ -6,6 +6,7 @@ import (
 	"gscan/common/constant"
 	"gscan/common/ports"
 	"net"
+	"net/netip"
 	"time"
 
 	"github.com/google/gopacket"
@@ -86,7 +87,8 @@ func (t *TCPScanner) GenerateTarget() {
 	}
 
 	for _, iface := range *ifaces {
-		gatewayMac := *arpInstance.AMap[common.IP2Uint32(iface.Gateway)]
+		ig, _ := netip.AddrFromSlice(iface.Gateway)
+		gatewayMac, _ := arpInstance.AHMap.Get(ig)
 		for _, ip := range t.IPList {
 			tmp := &TCPTarget{
 				SrcIP:    iface.IP,
