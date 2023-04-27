@@ -25,9 +25,9 @@ var logger = common.GetLogger()
 var receiver = common.GetReceiver()
 
 type ARPScanResult struct {
-	IP     netip.Addr       // 结果IP
-	Mac    net.HardwareAddr // 结果物理地址
-	Vendor string           // 结果物理地址厂商
+	IP     netip.Addr       `json:"ip"`     // 结果IP
+	Mac    net.HardwareAddr `json:"mac"`    // 结果物理地址
+	Vendor string           `json:"vendor"` // 结果物理地址厂商
 }
 
 type ARPScanResults struct {
@@ -35,6 +35,7 @@ type ARPScanResults struct {
 }
 
 type ARPScanner struct {
+	// Deprecated: No longer available.
 	Stop    chan struct{}             // ARP 扫描器状态
 	Opts    gopacket.SerializeOptions // 包序列化选项
 	Timeout time.Duration             // 抓包超时时间
@@ -112,6 +113,35 @@ func (a *ARPScanner) GenerateTarget() {
 				DstIP:  cIp,
 				Handle: iface.Handle,
 			}
+		}
+	}
+}
+
+func (a *ARPScanner) ScanOne(ip netip.Addr) *ARPScanResult {
+	for _, iface := range *a.Ifas {
+		if iface.Mask.Contains(ip) {
+			a.TargetCh <- &Target{
+				SrcMac: iface.HWAddr,
+				SrcIP:  iface.IP,
+				DstIP:  ip,
+				Handle: iface.Handle,
+			}
+			break
+		}
+	}
+	timeoutCh := make(chan struct{})
+	go func(timeoutch chan struct{}, timeout time.Duration) {
+		time.Sleep(timeout)
+		close(timeoutCh)
+	}(timeoutCh, a.Timeout)
+	for {
+		select {
+		case result := <-a.ResultCh:
+			if result.IP == ip {
+				return result
+			}
+		case <-timeoutCh:
+			return nil
 		}
 	}
 }

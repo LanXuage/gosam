@@ -1,6 +1,9 @@
 package common
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"net"
 	"net/netip"
 	"os/exec"
@@ -28,6 +31,19 @@ func Fnv32(key netip.Addr) uint32 {
 		hash ^= uint32(d[i])
 	}
 	return hash
+}
+
+func ToJSON(data interface{}) string {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Sprintf("%+v", data)
+	}
+	var out bytes.Buffer
+	err = json.Indent(&out, b, "", "    ")
+	if err != nil {
+		return fmt.Sprintf("%+v", data)
+	}
+	return out.String()
 }
 
 func IP2Uint32(ip net.IP) uint32 {
