@@ -144,9 +144,7 @@ func (icmpScanner *ICMPScanner) Scan() {
 	}
 }
 
-func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
-
-	resultCh := make(chan ICMPScanResult, 15)
+func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan *ICMPScanResult {
 
 	ipList = icmpScanner.filterIPList(ipList)
 
@@ -163,7 +161,7 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 
 	go icmpScanner.CheckIPList(ipList)
 
-	return resultCh
+	return icmpScanner.ResultCh
 }
 
 func (icmpScanner *ICMPScanner) filterIPList(ipList []net.IP) []net.IP {

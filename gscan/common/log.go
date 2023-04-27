@@ -7,10 +7,9 @@ import (
 )
 
 func initZapLogger() *zap.Logger {
-	GSCAN_LOG_LEVEL := os.Getenv("GSCAN_LOG_LEVEL")
 	switch GSCAN_LOG_LEVEL {
 	case "development":
-		logger, err := zap.NewProduction()
+		logger, err := zap.NewDevelopment()
 		if err != nil {
 			panic(err)
 		}
@@ -18,7 +17,7 @@ func initZapLogger() *zap.Logger {
 	case "production":
 		fallthrough
 	default:
-		logger, err := zap.NewDevelopment()
+		logger, err := zap.NewProduction()
 		if err != nil {
 			panic(err)
 		}
@@ -26,8 +25,15 @@ func initZapLogger() *zap.Logger {
 	}
 }
 
-var logger *zap.Logger = initZapLogger()
+var (
+	logger          *zap.Logger = initZapLogger()
+	GSCAN_LOG_LEVEL             = os.Getenv("GSCAN_LOG_LEVEL")
+)
 
 func GetLogger() *zap.Logger {
+	if GSCAN_LOG_LEVEL != os.Getenv("GSCAN_LOG_LEVEL") {
+		GSCAN_LOG_LEVEL = os.Getenv("GSCAN_LOG_LEVEL")
+		logger = initZapLogger()
+	}
 	return logger
 }
