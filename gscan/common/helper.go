@@ -1,8 +1,8 @@
 package common
 
 import (
-	"bytes"
 	"net"
+	"net/netip"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -17,6 +17,18 @@ func GetOuiPrefix(mac net.HardwareAddr) (string, string) {
 	ret1 := strings.ToUpper(strings.Replace(mac.String()[:8], ":", "", -1))
 	ret2 := strings.ToUpper(strings.Replace(mac.String()[:13], ":", "", -1))
 	return ret1, ret2
+}
+
+func Fnv32(key netip.Addr) uint32 {
+	hash := uint32(2166136261)
+	const prime32 = uint32(16777619)
+	d := key.AsSlice()
+	keyLength := len(d)
+	for i := 0; i < keyLength; i++ {
+		hash *= prime32
+		hash ^= uint32(d[i])
+	}
+	return hash
 }
 
 func IP2Uint32(ip net.IP) uint32 {
@@ -65,7 +77,7 @@ func IPList2NetIPList(ipList []string) []net.IP {
 	return s
 }
 
-// 重写IPNet.Contains函数
+// Deprecated: Use common.IsSameLAN instead.
 func CheckIPisIPNet(ip net.IP, gateway net.IP, mask uint32) bool {
 
 	ipArray := ip.To4()
@@ -97,11 +109,7 @@ func IPSegmentToIPList(ipSegment string) []string {
 }
 
 func Exec(command string) []byte {
-	in := bytes.NewBuffer(nil)
-	cmd := exec.Command("sh")
-
-	cmd.Stdin = in
-	in.WriteString(command)
+	cmd := exec.Command(command)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		logger.Error("Exec command failed", zap.String("cmd", command), zap.Error(err))

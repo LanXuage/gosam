@@ -94,9 +94,9 @@ func (r *Receiver) Unregister(name string) {
 	if ret, ok := r.ResultChs.Load(name); ok {
 		r.Lock.Lock()
 		defer r.Lock.Unlock()
-		close(ret.(chan interface{}))
 		r.ResultChs.Delete(name)
 		r.HookFuns.Delete(name)
+		close(ret.(chan interface{}))
 	}
 }
 

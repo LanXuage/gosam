@@ -6,6 +6,7 @@ import (
 	"gscan/common/constant"
 	"log"
 	"net"
+	"net/netip"
 	"time"
 
 	"github.com/google/gopacket"
@@ -120,16 +121,15 @@ func (icmpScanner *ICMPScanner) GenerateTarget(ipList []net.IP) {
 		return
 	}
 
-	for _, iface := range *arpInstance.Ifaces {
-		if *arpInstance.AMap[common.IP2Uint32(iface.Gateway)] != nil {
-
+	for _, iface := range *arpInstance.Ifas {
+		if dstMac, ok := arpInstance.AHMap.Get(iface.Gateway); ok {
 			for _, ip := range ipList {
 				icmpScanner.TargetCh <- &ICMPTarget{
-					SrcIP:  iface.IP,
+					SrcIP:  iface.IP.AsSlice(),
 					DstIP:  ip,
 					SrcMac: iface.HWAddr,
 					Handle: iface.Handle,
-					DstMac: *arpInstance.AMap[common.IP2Uint32(iface.Gateway)],
+					DstMac: dstMac,
 				}
 			}
 		}
@@ -168,8 +168,8 @@ func (icmpScanner *ICMPScanner) ScanList(ipList []net.IP) chan ICMPScanResult {
 
 func (icmpScanner *ICMPScanner) filterIPList(ipList []net.IP) []net.IP {
 	for i := 0; i < len(ipList); i++ {
-		ipUint32 := common.IP2Uint32(ipList[i])
-		if arpInstance.AMap[ipUint32] != nil {
+		ip, _ := netip.AddrFromSlice(ipList[i])
+		if _, ok := arpInstance.AHMap.Get(ip); ok {
 			(*icmpScanner.Results).Set(ipList[i].String(), true)
 			icmpScanner.ResultCh <- &ICMPScanResult{
 				IP:        ipList[i],
