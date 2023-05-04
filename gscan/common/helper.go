@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/google/gopacket"
@@ -80,6 +81,19 @@ func CheckIPisIPNet(ip net.IP, gateway net.IP, mask uint32) bool {
 		}
 	}
 	return true
+}
+
+func IPSegmentToIPList(ipSegment string) []string {
+	// "192.168.2.1/24" or "192.168.2.1-200"
+
+	pattern := `^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(3[012]|[12]?[0-9])$`
+	// pattern2 := `^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)[-]()$`
+
+	if match, err := regexp.MatchString(pattern, ipSegment); err != nil {
+		logger.Sugar().Debug(match)
+	}
+
+	return nil
 }
 
 func Exec(command string) []byte {

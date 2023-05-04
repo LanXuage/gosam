@@ -5,5 +5,5 @@ import (
 )
 
 func Test_Common(t *testing.T) {
-	GetGateways()
+	IPSegmentToIPList("192.169.2.1/24")
 }
