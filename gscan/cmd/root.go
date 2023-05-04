@@ -40,6 +40,9 @@ func Execute() error {
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "set debug log level")
-	rootCmd.PersistentFlags().BoolP("help", "", false, "help for this command")
+	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "D", false, "set debug log level")
+	rootCmd.PersistentFlags().BoolP("help", "H", false, "help for this command")
+	rootCmd.PersistentFlags().Int64P("timeout", "T", 3, "timeout global")
+	rootCmd.PersistentFlags().StringP("output", "O", "normal", "normal, json or xml(unrealized)")
+	rootCmd.PersistentFlags().StringP("file", "F", "", "file to output(unrealized)")
 }

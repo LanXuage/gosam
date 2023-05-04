@@ -98,28 +98,82 @@ func (a *ARPScanner) Close() {
 	close(a.ResultCh)
 }
 
-// 目标生产协程
-func (a *ARPScanner) GenerateTarget() {
-	for _, iface := range *a.Ifas {
-		cIp := iface.Mask.Addr()
+func (a *ARPScanner) generateTargetByPrefix(prefix netip.Prefix, iface common.GSIface) {
+	for i := 0; i < 2; i++ {
+		nIp := prefix.Addr()
 		for {
-			cIp := cIp.Next()
-			if !cIp.IsValid() || !iface.Mask.Contains(cIp) {
+			if iface.Gateway == nIp {
+				prefix1, prefix2 := common.GetOuiPrefix(iface.HWAddr)
+				vendor := a.OMap[prefix2]
+				if len(vendor) == 0 {
+					vendor = a.OMap[prefix1]
+				}
+				gh, _ := a.AHMap.Get(iface.Gateway)
+				a.ResultCh <- &ARPScanResult{
+					IP:     nIp,
+					Mac:    gh,
+					Vendor: vendor,
+				}
+			} else if !nIp.IsValid() || !prefix.Contains(nIp) || !iface.Mask.Contains(nIp) {
 				break
+			} else {
+				a.TargetCh <- &Target{
+					SrcMac: iface.HWAddr,
+					SrcIP:  iface.IP,
+					DstIP:  nIp,
+					Handle: iface.Handle,
+				}
 			}
-			a.TargetCh <- &Target{
-				SrcMac: iface.HWAddr,
-				SrcIP:  iface.IP,
-				DstIP:  cIp,
-				Handle: iface.Handle,
+			if i == 1 {
+				nIp = nIp.Prev()
+			} else {
+				nIp = nIp.Next()
 			}
 		}
 	}
 }
 
+// 目标生产协程
+func (a *ARPScanner) GenerateTarget(timeoutCh chan struct{}) {
+	for _, iface := range *a.Ifas {
+		a.generateTargetByPrefix(iface.Mask, iface)
+	}
+	time.Sleep(a.Timeout)
+	close(timeoutCh)
+}
+
+func (a *ARPScanner) goScanPrefix(prefix netip.Prefix, timetouCh chan struct{}) {
+	for _, iface := range *a.Ifas {
+		if iface.Mask.Contains(prefix.Addr()) {
+			a.generateTargetByPrefix(prefix, iface)
+		}
+	}
+	time.Sleep(a.Timeout)
+	close(timetouCh)
+}
+
+func (a *ARPScanner) ScanPrefix(prefix netip.Prefix) chan struct{} {
+	timeoutCh := make(chan struct{})
+	go a.goScanPrefix(prefix, timeoutCh)
+	return timeoutCh
+}
+
 func (a *ARPScanner) ScanOne(ip netip.Addr) *ARPScanResult {
 	for _, iface := range *a.Ifas {
-		if iface.Mask.Contains(ip) {
+		logger.Debug("so", zap.Any("ip", iface.Gateway))
+		if iface.Gateway == ip {
+			prefix1, prefix2 := common.GetOuiPrefix(iface.HWAddr)
+			vendor := a.OMap[prefix2]
+			if len(vendor) == 0 {
+				vendor = a.OMap[prefix1]
+			}
+			gh, _ := a.AHMap.Get(iface.Gateway)
+			return &ARPScanResult{
+				IP:     ip,
+				Mac:    gh,
+				Vendor: vendor,
+			}
+		} else if iface.Mask.Contains(ip) {
 			a.TargetCh <- &Target{
 				SrcMac: iface.HWAddr,
 				SrcIP:  iface.IP,
@@ -147,11 +201,12 @@ func (a *ARPScanner) ScanOne(ip netip.Addr) *ARPScanResult {
 }
 
 // 执行全局域网扫描
-func (a *ARPScanner) ScanLocalNet() chan *ARPScanResult {
+func (a *ARPScanner) ScanLocalNet() chan struct{} {
 	logger.Debug("Start Generate")
 	// logger.Sync()
-	go a.GenerateTarget()
-	return a.ResultCh
+	timeoutCh := make(chan struct{})
+	go a.GenerateTarget(timeoutCh)
+	return timeoutCh
 }
 
 // 接收协程
