@@ -33,7 +33,7 @@ var (
 func GetLogger() *zap.Logger {
 	if GSCAN_LOG_LEVEL != os.Getenv("GSCAN_LOG_LEVEL") {
 		GSCAN_LOG_LEVEL = os.Getenv("GSCAN_LOG_LEVEL")
-		logger = initZapLogger()
+		*logger = *initZapLogger()
 	}
 	return logger
 }
