@@ -12,9 +12,3 @@ const (
 	TCPREGISTER_NAME  string = "TCP"
 	UDPREGISTER_NAME  string = "UDP"
 )
-
-// TCP Scan TYPE
-const (
-	TYPE_FULLTCP uint8 = 1
-	TYPE_HALFTCP uint8 = 2
-)

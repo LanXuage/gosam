@@ -1,9 +1,9 @@
-package port
+package port_test
 
 import (
 	"gscan/common"
-	"gscan/common/constant"
 	"gscan/common/ports"
+	"gscan/port"
 	"os"
 	"testing"
 	"time"
@@ -17,18 +17,18 @@ var testIPList = []string{"13.107.21.200", "120.78.212.208",
 
 var testTCPScanPorts = *ports.GetDefaultPorts()
 
-func Test_HALFTCP(t *testing.T) {
+func TestHalfTCP(t *testing.T) {
 	os.Setenv("GSCAN_LOG_LEVEL", "development")
-	p := New()
+	p := port.New()
 	defer p.Close()
 
 	tmp := common.IPList2NetIPList(testIPList)
-	tcp := p.TCPScan(tmp, testTCPScanPorts, constant.TYPE_HALFTCP)
+	tcp := p.TCPScan(tmp, testTCPScanPorts, 1)
 
 	time.Sleep(tcp.Timeout)
 
 	for _, ip := range testIPList {
-		logger.Sugar().Debugf("IP %s result:", ip)
+		t.Logf("IP %s result:", ip)
 		if portList, ok := (*tcp.Results).Get(ip); portList != nil && ok {
 			for _, port := range tcp.ScanPorts {
 				if status, _ := portList.Get(port.String()); status {
@@ -41,19 +41,19 @@ func Test_HALFTCP(t *testing.T) {
 	}
 }
 
-func Test_FULLTCP(t *testing.T) {
+func TestFullTCP(t *testing.T) {
 	os.Setenv("GSCAN_LOG_LEVEL", "development")
-	p := New()
+	p := port.New()
 	defer p.Close()
 
 	tmp := common.IPList2NetIPList(testIPList)
 
-	tcp := p.TCPScan(tmp, testTCPScanPorts, constant.TYPE_FULLTCP)
+	tcp := p.TCPScan(tmp, testTCPScanPorts, 0)
 
 	time.Sleep(tcp.Timeout)
 
 	for _, ip := range testIPList {
-		logger.Sugar().Debugf("IP %s result:", ip)
+		t.Logf("IP %s result:", ip)
 		if portList, ok := (*tcp.Results).Get(ip); portList != nil && ok {
 			for _, port := range tcp.ScanPorts {
 				if status, _ := portList.Get(port.String()); status {
@@ -68,7 +68,7 @@ func Test_FULLTCP(t *testing.T) {
 
 func Test_UDP(t *testing.T) {
 	os.Setenv("GSCAN_LOG_LEVEL", "development")
-	p := New()
+	p := port.New()
 	defer p.Close()
 
 	tmp := common.IPList2NetIPList(testIPList)

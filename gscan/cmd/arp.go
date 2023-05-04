@@ -21,30 +21,32 @@ var (
 			timeout, _ := cmd.Flags().GetInt64("timeout")
 			logger.Debug("runE", zap.Int64("timeout", timeout))
 			arpScanner.Timeout = time.Second * time.Duration(timeout)
-			host, _ := cmd.Flags().GetString("host")
-			logger.Debug("runE", zap.Any("host", host))
-			if host == "" {
-				all, _ := cmd.Flags().GetBool("all")
-				if all {
-					timeoutCh := arpScanner.ScanLocalNet()
-					normalPrintf(timeoutCh, arpScanner.ResultCh)
+			hosts, _ := cmd.Flags().GetStringArray("host")
+			logger.Debug("runE", zap.Any("host", hosts))
+			for _, host := range hosts {
+				if host == "" {
+					all, _ := cmd.Flags().GetBool("all")
+					if all {
+						timeoutCh := arpScanner.ScanLocalNet()
+						normalPrintf(timeoutCh, arpScanner.ResultCh)
+					} else {
+						cmd.Help()
+					}
+				} else if ip, err := netip.ParseAddr(host); err != nil {
+					if prefix, err := netip.ParsePrefix(host); err != nil {
+						logger.Debug("arp", zap.Any("ip", ip))
+					} else {
+						logger.Debug("runE", zap.Any("prefix", prefix))
+						timeoutCh := arpScanner.ScanPrefix(prefix)
+						normalPrintf(timeoutCh, arpScanner.ResultCh)
+					}
 				} else {
-					cmd.Help()
-				}
-			} else if ip, err := netip.ParseAddr(host); err != nil {
-				if prefix, err := netip.ParsePrefix(host); err != nil {
-					logger.Debug("arp", zap.Any("ip", ip))
-				} else {
-					logger.Debug("runE", zap.Any("prefix", prefix))
-					timeoutCh := arpScanner.ScanPrefix(prefix)
-					normalPrintf(timeoutCh, arpScanner.ResultCh)
-				}
-			} else {
-				result := arpScanner.ScanOne(ip)
-				if result != nil {
-					fmt.Printf("%s\t%v\t%s\n", result.IP, result.Mac, result.Vendor)
-				} else {
-					fmt.Printf("no result(timeout %ds)\n", timeout)
+					result := arpScanner.ScanOne(ip)
+					if result != nil {
+						fmt.Printf("%s\t%v\t%s\n", result.IP, result.Mac, result.Vendor)
+					} else {
+						fmt.Printf("no result(timeout %ds)\n", timeout)
+					}
 				}
 			}
 			return nil
@@ -65,6 +67,6 @@ func normalPrintf(timeoutCh chan struct{}, resultCh chan *arp.ARPScanResult) {
 
 func init() {
 	rootCmd.AddCommand(arpCmd)
-	arpCmd.Flags().StringP("host", "h", "", "host, domain or cidr to scan")
+	arpCmd.Flags().StringArrayP("host", "h", []string{}, "hosts, domains or CIDRs to scan")
 	arpCmd.Flags().BoolP("all", "a", false, "to scan all localnet")
 }

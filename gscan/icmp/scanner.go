@@ -39,6 +39,7 @@ type ICMPScanResult struct {
 	IP        net.IP
 	IsActive  bool
 	IsARPScan bool
+	CostTTL   int16
 }
 
 type ICMPResultMap *cmap.ConcurrentMap[string, bool]
