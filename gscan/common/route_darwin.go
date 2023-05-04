@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"net/netip"
 )
 
 type Interface struct {
@@ -14,6 +15,56 @@ type Interface struct {
 	DeviceName string
 }
 
+func Gways() []netip.Addr {
+	ret := []netip.Addr{}
+	// 做两次筛选
+	// 第一次为关键字：IP address、Subnet mask、 Router
+	// 第二次为mac地址：查询是否存在mac地址，通过匹配null关键字
+	// 查询结果模板：
+	// DHCP Configuration
+	// IP address: 192.168.2.137
+	// Subnet mask: 255.255.255.0
+	// Router: 192.168.2.1
+	// Client ID:
+	// IPv6: Automatic
+	// IPv6 IP address: none
+	// IPv6 Router: none
+	// Wi-Fi ID: bc:d0:74:2c:5b:11
+
+	ifs := GetInterfaces()
+	baseCommand := "networksetup -getinfo \"%s\""
+
+	for _, iface := range ifs {
+		if out := Exec(fmt.Sprintf(baseCommand, iface.Port)); out != nil {
+
+			// 第一次关键字过滤
+			if !bytes.Contains(out, []byte("IP address")) ||
+				!bytes.Contains(out, []byte("Subnet mask")) ||
+				!bytes.Contains(out, []byte("Router")) {
+				continue
+			}
+
+			infoByte := bytes.Split(out, []byte{0x0a})[1:] // 通过换行符进行分割
+
+			// 第二次mac地址值校验
+			macAddr := bytes.Split(infoByte[len(infoByte)-2], []byte(": ")) //
+			// logger.Sugar().Debug(string(macAddr[1]))
+
+			if bytes.Contains(macAddr[1], []byte("null")) { // 网卡物理地址是否为null
+				continue
+			}
+
+			// 获取网卡其他信息
+			gateway := bytes.Split(infoByte[2], []byte(": "))[1]
+			logger.Sugar().Debug(gateway)
+			// ret = append(ret, netip.AddrFromSlice([]byte(gateway)))
+		}
+	}
+	logger.Sugar().Debug(ret)
+	return ret
+}
+
+// Deprecated: Use common.Gways instead.
 func GetGateways() []net.IP {
 	// 做两次筛选
 	// 第一次为关键字：IP address、Subnet mask、 Router
@@ -82,8 +133,6 @@ func GetInterfaces() []Interface {
 				DeviceName: string(r5),
 			})
 		}
-
 	}
-	// logger.Sugar().Debug(ifs)
 	return ifs
 }
