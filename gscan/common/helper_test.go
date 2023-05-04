@@ -31,6 +31,7 @@ func TestIsSameLAN(t *testing.T) {
 
 func TestExec(t *testing.T) {
 	t.Log(string(common.Exec("ls")))
+	t.Log(string(common.Exec("ls -a")))
 }
 
 func BenchmarkIsSameLAN(b *testing.B) {

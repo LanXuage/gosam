@@ -111,7 +111,7 @@ func CheckIPisIPNet(ip net.IP, gateway net.IP, mask uint32) bool {
 }
 
 func Exec(command string) []byte {
-	cmd := exec.Command(command)
+	cmd := exec.Command("sh", "-c", command)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		logger.Error("Exec command failed", zap.String("cmd", command), zap.Error(err))
