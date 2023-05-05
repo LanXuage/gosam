@@ -1,41 +1,247 @@
 package port
 
 import (
+	"fmt"
 	"gscan/common"
+	"gscan/common/ports"
+	"math/rand"
+	"net/netip"
+	"time"
 
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	cmap "github.com/orcaman/concurrent-map/v2"
+	"go.uber.org/zap"
 )
 
 type TCPScanner struct {
-	HalfTCPScanner
+	TargetCh     chan *TCPTarget
+	ResultCh     chan *TCPResult
+	Timeout      time.Duration
+	SrcPort      layers.TCPPort
+	OpenPorts    cmap.ConcurrentMap[netip.Addr, cmap.ConcurrentMap[layers.TCPPort, bool]]
+	Opts         gopacket.SerializeOptions
+	UseFullTCP   bool
+	PortScanType int8
+	Ports        []layers.TCPPort
 }
 
-func newTCPScanner() *TCPScanner {
-	return &TCPScanner{
-		HalfTCPScanner: *GetHalfTCPScanner(),
+func (t *TCPScanner) Save(sip []byte, sport layers.TCPPort) {
+	srcIP, _ := netip.AddrFromSlice(sip)
+	if _, ok := t.OpenPorts.Get(srcIP); !ok {
+		portSet := cmap.NewWithCustomShardingFunction[layers.TCPPort, bool](func(key layers.TCPPort) uint32 { return uint32(key) })
+		t.OpenPorts.Set(srcIP, portSet)
+	}
+	if res, ok := t.OpenPorts.Get(srcIP); ok {
+		res.Set(sport, true)
+		logger.Sugar().Debugf("IP: %s, Port: %s, Status: true", sip, sport)
 	}
 }
 
 func (t *TCPScanner) RecvTCP(packet gopacket.Packet) interface{} {
-	if tcp, ip, eth := t.Unpack(packet); tcp != nil {
-		if tcp.SYN {
+	ethLayer := packet.Layer(layers.LayerTypeEthernet)
+	if ethLayer == nil {
+		return nil
+	}
+	eth := ethLayer.(*layers.Ethernet)
+	if eth == nil {
+		return nil
+	}
+	ipLayer := packet.Layer(layers.LayerTypeIPv4)
+	if ipLayer == nil {
+		return nil
+	}
+	ip := ipLayer.(*layers.IPv4)
+	if ip == nil {
+		return nil
+	}
+	tcpLayer := packet.Layer(layers.LayerTypeTCP)
+	if tcpLayer == nil {
+		return nil
+	}
+	tcp, _ := tcpLayer.(*layers.TCP)
+	if tcp == nil || tcp.DstPort != t.SrcPort {
+		return nil
+	}
+	logger.Debug("RecvTcp", zap.Any("tcp", tcp))
+	fmt.Println(tcp.Seq)
+	fmt.Println(tcp.Seq + 1)
+	if tcp.SYN && t.UseFullTCP {
+		iface := common.GetInterfaceBySrcMac(eth.DstMAC)
+		if iface != nil {
 			t.TargetCh <- &TCPTarget{
-				SrcIP:   ip.DstIP,
-				SrcPort: t.SrcPost,
-				DstIP:   ip.SrcIP,
-				DstPort: tcp.SrcPort,
-				SrcMac:  eth.DstMAC,
-				DstMac:  eth.SrcMAC,
-				Ack:     tcp.Seq + 1,
-				Handle:  common.GetInterfaceBySrcMac(eth.DstMAC).Handle,
+				SrcIP:    ip.DstIP,
+				DstIP:    ip.SrcIP,
+				DstPorts: &[]layers.TCPPort{tcp.SrcPort},
+				SrcMac:   eth.DstMAC,
+				DstMac:   eth.SrcMAC,
+				Ack:      tcp.Seq + 1,
+				Handle:   iface.Handle,
 			}
-			return nil
 		}
-		t.Save(ip.SrcIP, tcp.SrcPort)
-		return TCPResult{
-			IP:   ip.SrcIP,
-			Port: tcp.SrcPort,
+		return nil
+	}
+	t.Save(ip.SrcIP, tcp.SrcPort)
+	sip, _ := netip.AddrFromSlice(ip.SrcIP)
+	return &TCPResult{
+		IP:   sip,
+		Port: tcp.SrcPort,
+	}
+}
+
+func (t *TCPScanner) Recv() {
+	defer close(t.ResultCh)
+	for r := range receiver.Register(TCP_REGISTER_NAME, t.RecvTCP) {
+		if result, ok := r.(*TCPResult); ok {
+			t.ResultCh <- result
 		}
 	}
-	return nil
+}
+
+func (t *TCPScanner) SendSYNACK(target *TCPTarget) {
+	buffer := gopacket.NewSerializeBuffer()
+	ethLayer := &layers.Ethernet{
+		SrcMAC:       target.SrcMac,
+		DstMAC:       target.DstMac,
+		EthernetType: layers.EthernetTypeIPv4,
+	}
+	ipLayer := &layers.IPv4{
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocolTCP,
+		SrcIP:    target.SrcIP,
+		DstIP:    target.DstIP,
+		Flags:    layers.IPv4DontFragment,
+	}
+	for _, dstPort := range *target.DstPorts {
+		tcpLayer := &layers.TCP{
+			SrcPort: t.SrcPort,
+			DstPort: dstPort,
+			Seq:     100,
+			SYN:     true,
+			Options: []layers.TCPOption{},
+		}
+		if target.Ack != 0 {
+			fmt.Println(target.Ack)
+			fmt.Println(target.Ack - 1)
+			tcpLayer.Ack = target.Ack
+
+			tcpLayer.ACK = true
+			tcpLayer.Seq = 101
+			tcpLayer.SYN = false
+		}
+		tcpLayer.SetNetworkLayerForChecksum(ipLayer)
+		if err := gopacket.SerializeLayers(buffer, t.Opts, ethLayer, ipLayer, tcpLayer); err != nil {
+			logger.Error("SerializeLayers Failed", zap.Error(err))
+		}
+		data := buffer.Bytes()
+		if target.Ack != 0 {
+			fmt.Println(data)
+		}
+		if err := target.Handle.WritePacketData(data); err != nil {
+			logger.Error("WritePacketData Failed", zap.Error(err))
+		}
+	}
+}
+
+func (t *TCPScanner) Scan() {
+	for target := range t.TargetCh {
+		t.SendSYNACK(target)
+	}
+}
+
+func (t *TCPScanner) Close() {
+	receiver.Unregister(TCP_REGISTER_NAME)
+	close(t.TargetCh)
+	close(t.ResultCh)
+}
+
+func (t *TCPScanner) ScanLocalNet() chan struct{} {
+	timeoutCh := make(chan struct{})
+	go t.generateLocalNetTarget(timeoutCh)
+	return timeoutCh
+}
+
+func (t *TCPScanner) generateLocalNetTarget(timeoutCh chan struct{}) {
+	for _, iface := range *arpInstance.Ifas {
+		t.generateTargetByPrefix(iface.Mask, iface)
+	}
+	time.Sleep(t.Timeout)
+	close(timeoutCh)
+}
+
+func (t *TCPScanner) generateTarget(ip netip.Addr, iface common.GSIface) {
+	dstMac, _ := arpInstance.AHMap.Get(iface.Gateway)
+	if ip == iface.IP {
+		dstMac = iface.HWAddr
+	}
+	dstPorts := ports.GetDefaultPorts()
+	if t.PortScanType == ALL_PORTS {
+		dstPorts = &[]layers.TCPPort{}
+		for i := 1; i < 65536; i++ {
+			*dstPorts = append(*dstPorts, layers.TCPPort(i))
+		}
+	}
+	t.TargetCh <- &TCPTarget{
+		SrcMac:   iface.HWAddr,
+		DstMac:   dstMac,
+		SrcIP:    iface.IP.AsSlice(),
+		DstIP:    ip.AsSlice(),
+		Ack:      0,
+		DstPorts: dstPorts,
+		Handle:   iface.Handle,
+	}
+}
+
+func (t *TCPScanner) generateTargetByPrefix(prefix netip.Prefix, iface common.GSIface) {
+	for i := 0; i < 2; i++ {
+		nIp := prefix.Addr()
+		for {
+			if (nIp.Is4() && nIp.AsSlice()[3] != 0) || (nIp.Is6() && nIp.AsSlice()[15] != 0) {
+				if !nIp.IsValid() || !prefix.Contains(nIp) || !iface.Mask.Contains(nIp) {
+					break
+				} else {
+					t.generateTarget(nIp, iface)
+				}
+			}
+			if i == 1 {
+				nIp = nIp.Prev()
+			} else {
+				nIp = nIp.Next()
+			}
+		}
+	}
+}
+
+func (t *TCPScanner) goScanMany(targetIPs []netip.Addr, timeoutCh chan struct{}) {
+	for _, targetIP := range targetIPs {
+		for _, iface := range *arpInstance.Ifas {
+			t.generateTarget(targetIP, iface)
+		}
+	}
+	time.Sleep(t.Timeout)
+	close(timeoutCh)
+}
+
+func (t *TCPScanner) ScanMany(targetIPs []netip.Addr) chan struct{} {
+	timeoutCh := make(chan struct{})
+	go t.goScanMany(targetIPs, timeoutCh)
+	return timeoutCh
+}
+
+func newTCPScanner() *TCPScanner {
+	t := &TCPScanner{
+		TargetCh:     make(chan *TCPTarget, 10),
+		ResultCh:     make(chan *TCPResult, 10),
+		Timeout:      3 * time.Second,
+		SrcPort:      layers.TCPPort(10000 + rand.Intn(55535)),
+		OpenPorts:    cmap.NewWithCustomShardingFunction[netip.Addr, cmap.ConcurrentMap[layers.TCPPort, bool]](common.Fnv32),
+		Opts:         gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true},
+		UseFullTCP:   false,
+		PortScanType: DEFAULT_PORTS,
+		Ports:        []layers.TCPPort{},
+	}
+	go t.Recv()
+	go t.Scan()
+	return t
 }

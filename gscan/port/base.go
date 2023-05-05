@@ -4,6 +4,7 @@ import (
 	"gscan/arp"
 	"gscan/common"
 	"net"
+	"net/netip"
 
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -13,29 +14,25 @@ var arpInstance = arp.GetARPScanner()
 var receiver = common.GetReceiver()
 
 const (
-	TCP_REGISTER_NAME string = "TCP"
+	TCP_REGISTER_NAME = "TCP"
+	DEFAULT_PORTS     = 0
+	ALL_PORTS         = 1
+	CUSTOM_PORTS      = 2
 )
 
 type TCPResult struct {
-	IP   net.IP
+	IP   netip.Addr
 	Port layers.TCPPort
 }
 
 type TCPTarget struct {
-	SrcIP   []byte
-	SrcPort layers.TCPPort
-	DstIP   []byte
-	DstPort layers.TCPPort
-	Ack     uint32
-	SrcMac  net.HardwareAddr
-	DstMac  net.HardwareAddr
-	Handle  *pcap.Handle
-}
-
-var halfTCPInstance = newHalfTCPScanner()
-
-func GetHalfTCPScanner() *HalfTCPScanner {
-	return halfTCPInstance
+	SrcIP    []byte
+	DstIP    []byte
+	DstPorts *[]layers.TCPPort
+	Ack      uint32
+	SrcMac   net.HardwareAddr
+	DstMac   net.HardwareAddr
+	Handle   *pcap.Handle
 }
 
 var tcpInstance = newTCPScanner()

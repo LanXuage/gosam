@@ -1,7 +1,6 @@
 package common
 
 import (
-	"fmt"
 	"net"
 	"net/netip"
 
@@ -142,7 +141,6 @@ func GetActiveInterfaces() *[]GSInterface {
 func GetInterfaceBySrcMac(srcMac net.HardwareAddr) *GSInterface {
 	for _, iface := range *getActiveInterfaces() {
 		if iface.HWAddr.String() == srcMac.String() {
-			fmt.Println(iface, srcMac)
 			return &iface
 		}
 	}

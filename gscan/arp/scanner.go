@@ -40,26 +40,28 @@ func (a *ARPScanner) generateTargetByPrefix(prefix netip.Prefix, iface common.GS
 	for i := 0; i < 2; i++ {
 		nIp := prefix.Addr()
 		for {
-			if iface.Gateway == nIp {
-				prefix1, prefix2 := common.GetOuiPrefix(iface.HWAddr)
-				vendor := a.OMap[prefix2]
-				if len(vendor) == 0 {
-					vendor = a.OMap[prefix1]
-				}
-				gh, _ := a.AHMap.Get(iface.Gateway)
-				a.ResultCh <- &ARPScanResult{
-					IP:     nIp,
-					Mac:    gh,
-					Vendor: vendor,
-				}
-			} else if !nIp.IsValid() || !prefix.Contains(nIp) || !iface.Mask.Contains(nIp) {
-				break
-			} else {
-				a.TargetCh <- &Target{
-					SrcMac: iface.HWAddr,
-					SrcIP:  iface.IP,
-					DstIP:  nIp,
-					Handle: iface.Handle,
+			if (nIp.Is4() && nIp.AsSlice()[3] != 0) || (nIp.Is6() && nIp.AsSlice()[15] != 0) {
+				if iface.Gateway == nIp {
+					prefix1, prefix2 := common.GetOuiPrefix(iface.HWAddr)
+					vendor := a.OMap[prefix2]
+					if len(vendor) == 0 {
+						vendor = a.OMap[prefix1]
+					}
+					gh, _ := a.AHMap.Get(iface.Gateway)
+					a.ResultCh <- &ARPScanResult{
+						IP:     nIp,
+						Mac:    gh,
+						Vendor: vendor,
+					}
+				} else if !nIp.IsValid() || !prefix.Contains(nIp) || !iface.Mask.Contains(nIp) {
+					break
+				} else {
+					a.TargetCh <- &Target{
+						SrcMac: iface.HWAddr,
+						SrcIP:  iface.IP,
+						DstIP:  nIp,
+						Handle: iface.Handle,
+					}
 				}
 			}
 			if i == 1 {
