@@ -18,3 +18,8 @@ const (
 	TYPE_FULLTCP uint8 = 1
 	TYPE_HALFTCP uint8 = 2
 )
+
+// Default Channel Size
+const (
+	CHANNEL_SIZE uint8 = 10
+)

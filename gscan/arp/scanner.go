@@ -41,9 +41,11 @@ type ARPScanner struct {
 	Timeout time.Duration             // 抓包超时时间
 	// Deprecated: Use Ifas instead.
 	Ifaces *[]common.GSInterface // 可用接口列表
-	Ifas   *[]common.GSIface     // 可用接口列表
+
+	Ifas *[]common.GSIface // 可用接口列表
 	// Deprecated: Use AHMap instead.
-	AMap     cmap.ConcurrentMap[uint32, *net.HardwareAddr]    // 获取到的IP <-> Mac 映射表
+	AMap cmap.ConcurrentMap[uint32, *net.HardwareAddr] // 获取到的IP <-> Mac 映射表
+
 	AHMap    cmap.ConcurrentMap[netip.Addr, net.HardwareAddr] // 获取到的IP <-> Mac 映射表
 	OMap     map[string]string                                // Mac前缀 <-> 厂商 映射表
 	Lock     sync.Mutex

@@ -31,6 +31,9 @@ func TestIsSameLAN(t *testing.T) {
 
 func TestExec(t *testing.T) {
 	t.Log(string(common.Exec("ls -a")))
+
+	// darwin test
+	t.Log(string(common.Exec("networksetup -listnetworkserviceorder | grep \"Hardware Port\"")))
 }
 
 func BenchmarkIsSameLAN(b *testing.B) {

@@ -47,20 +47,22 @@ func Gways() []netip.Addr {
 			infoByte := bytes.Split(out, []byte{0x0a})[1:] // 通过换行符进行分割
 
 			// 第二次mac地址值校验
-			macAddr := bytes.Split(infoByte[len(infoByte)-2], []byte(": ")) //
-			// logger.Sugar().Debug(string(macAddr[1]))
+			macAddr := bytes.Split(infoByte[len(infoByte)-2], []byte(": "))
 
 			if bytes.Contains(macAddr[1], []byte("null")) { // 网卡物理地址是否为null
 				continue
 			}
 
 			// 获取网卡其他信息
-			gateway := bytes.Split(infoByte[2], []byte(": "))[1]
-			logger.Sugar().Debug(gateway)
-			// ret = append(ret, netip.AddrFromSlice([]byte(gateway)))
+			gateway := string(bytes.Split(infoByte[2], []byte(": "))[1])
+			fmt.Println(gateway)
+			res, err := netip.ParseAddr(gateway)
+			if err != nil {
+				continue
+			}
+			ret = append(ret, res)
 		}
 	}
-	logger.Sugar().Debug(ret)
 	return ret
 }
 
@@ -106,7 +108,7 @@ func GetGateways() []net.IP {
 
 			// 获取网卡其他信息
 			gateway := string(bytes.Split(infoByte[2], []byte(": "))[1])
-			// logger.Debug(gateway)
+			logger.Debug(gateway)
 			gateways = append(gateways, net.ParseIP(gateway).To4())
 		}
 	}
