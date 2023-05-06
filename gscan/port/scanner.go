@@ -27,20 +27,7 @@ func (p *PortScan) Close() {
 }
 
 func (p *PortScan) TCPScan(ipList []net.IP, scanPorts []layers.TCPPort, scanType uint8) *TCPScanner {
-	tcp := InitialTCPScanner(scanType, ipList, scanPorts)
-
-	logger.Debug("Start Recv And Scan")
-	go tcp.Recv()
-	go tcp.Scan()
-
-	go tcp.GenerateTarget()
-
-	go tcp.CheckIPList()
-
-	time.Sleep(tcp.Timeout)
-
-	return tcp
-
+	return nil
 }
 
 func (p *PortScan) UDPScan(ipList []net.IP) *UDPScanner {

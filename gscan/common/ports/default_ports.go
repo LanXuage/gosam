@@ -11,5 +11,6 @@ func GetDefaultPorts() *[]layers.TCPPort {
 		DEFAULT_MYSQL,
 		DEFAULT_WEB,
 		DEFAULT_WEB_HTTPS,
+		DEFAULT_SSH,
 	}
 }

@@ -47,7 +47,7 @@ func (r *Receiver) init() {
 		for i := 0; i < 10; i++ {
 			r.RecvWorkers.Invoke(packets)
 		}
-		p, err = ants.NewPoolWithFunc(500, r.startHookFun)
+		p, err = ants.NewPoolWithFunc(512, r.startHookFun)
 		if err != nil {
 			logger.Error("Create hookFunc pool failed", zap.Error(err))
 		}

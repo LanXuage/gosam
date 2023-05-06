@@ -7,7 +7,6 @@ import (
 )
 
 var (
-	debug   bool
 	rootCmd = &cobra.Command{
 		Use:   "gscan",
 		Short: "A Scanner. ",
@@ -17,7 +16,7 @@ var (
  / /_/  >___ \\  \___ / __ \|   |  \
  \___  /____  >\___  >____  /___|  /
 /_____/     \/     \/     \/     \/ 
-https://github.com/LanXuage/gosam
+https://github.com/LanXuage/gosam/gscan
 
 A Scanner. `,
 		Version: "0.1.0",
@@ -25,6 +24,7 @@ A Scanner. `,
 			return cmd.Help()
 		},
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			debug, _ := cmd.Flags().GetBool("debug")
 			if debug {
 				os.Setenv("GSCAN_LOG_LEVEL", "development")
 			} else {
@@ -40,7 +40,7 @@ func Execute() error {
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "D", false, "set debug log level")
+	rootCmd.PersistentFlags().BoolP("debug", "D", false, "set debug log level")
 	rootCmd.PersistentFlags().BoolP("help", "H", false, "help for this command")
 	rootCmd.PersistentFlags().Int64P("timeout", "T", 3, "timeout global")
 	rootCmd.PersistentFlags().StringP("output", "O", "normal", "normal, json or xml(unrealized)")
