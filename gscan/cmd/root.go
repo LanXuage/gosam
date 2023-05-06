@@ -7,7 +7,9 @@ import (
 )
 
 var (
-	rootCmd = &cobra.Command{
+	withARP  bool
+	withICMP bool
+	rootCmd  = &cobra.Command{
 		Use:   "gscan",
 		Short: "A Scanner. ",
 		Long: `Gscan
@@ -42,7 +44,10 @@ func Execute() error {
 func init() {
 	rootCmd.PersistentFlags().BoolP("debug", "D", false, "set debug log level")
 	rootCmd.PersistentFlags().BoolP("help", "H", false, "help for this command")
+	rootCmd.PersistentFlags().BoolP("version", "V", false, "version for gscan")
 	rootCmd.PersistentFlags().Int64P("timeout", "T", 3, "timeout global")
 	rootCmd.PersistentFlags().StringP("output", "O", "normal", "normal, json or xml(unrealized)")
 	rootCmd.PersistentFlags().StringP("file", "F", "", "file to output(unrealized)")
+	rootCmd.PersistentFlags().BoolVarP(&withARP, "arp", "A", false, "with arp scan")
+	rootCmd.PersistentFlags().BoolVarP(&withICMP, "icmp", "I", false, "with icmp scan")
 }

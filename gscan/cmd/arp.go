@@ -12,11 +12,13 @@ import (
 )
 
 var (
-	arpScanner = arp.GetARPScanner()
-	arpCmd     = &cobra.Command{
+	arpCmd = &cobra.Command{
 		Use:   "arp",
 		Short: "ARP Scanner",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			arpScanner := arp.GetARPScanner()
+			defer arpScanner.Close()
+			start := time.Now()
 			logger := common.GetLogger()
 			timeout, _ := cmd.Flags().GetInt64("timeout")
 			logger.Debug("runE", zap.Int64("timeout", timeout))
@@ -32,10 +34,16 @@ var (
 					cmd.Help()
 				}
 			}
+			ips := []netip.Addr{}
 			for _, host := range hosts {
 				if ip, err := netip.ParseAddr(host); err != nil {
 					if prefix, err := netip.ParsePrefix(host); err != nil {
 						logger.Debug("arp", zap.Any("ip", ip))
+						if tmp, err := ParseAddr(host); err == nil {
+							ips = append(ips, tmp...)
+						} else {
+							fmt.Println(err)
+						}
 					} else {
 						logger.Debug("runE", zap.Any("prefix", prefix))
 						timeoutCh := arpScanner.ScanPrefix(prefix)
@@ -46,6 +54,11 @@ var (
 					normalPrintf(timeoutCh, arpScanner.ResultCh)
 				}
 			}
+			if len(ips) > 0 {
+				timeoutCh := arpScanner.ScanMany(ips)
+				normalPrintf(timeoutCh, arpScanner.ResultCh)
+			}
+			fmt.Printf("Cost: %v\n", time.Since(start))
 			return nil
 		},
 	}
