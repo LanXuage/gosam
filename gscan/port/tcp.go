@@ -57,9 +57,13 @@ func (t *TCPScanner) RecvTCP(packet gopacket.Packet) interface{} {
 	if tcp.RST && tcp.ACK {
 		return nil
 	}
+	if srcIface := common.GetIfaceBySrcMac(eth.SrcMAC); srcIface != nil && tcp.SrcPort == t.SrcPort {
+		return nil
+	}
 	if tcp.SYN && tcp.ACK && t.UseFullTCP {
 		iface := common.GetInterfaceBySrcMac(eth.DstMAC)
 		if iface != nil {
+			iface := common.GetInterfaceBySrcMac(eth.DstMAC)
 			t.TargetCh <- &TCPTarget{
 				SrcIP:    ip.DstIP,
 				DstIP:    ip.SrcIP,
@@ -69,8 +73,8 @@ func (t *TCPScanner) RecvTCP(packet gopacket.Packet) interface{} {
 				Ack:      tcp.Seq + 1,
 				Handle:   iface.Handle,
 			}
+			return nil
 		}
-		return nil
 	}
 	srcIP, _ := netip.AddrFromSlice(ip.SrcIP)
 	if _, ok := t.OpenPorts.Get(srcIP); !ok {
@@ -82,7 +86,6 @@ func (t *TCPScanner) RecvTCP(packet gopacket.Packet) interface{} {
 			return nil
 		}
 		res.Set(tcp.SrcPort, true)
-		logger.Sugar().Debugf("IP: %s, Port: %s, Status: true", srcIP, tcp.SrcPort)
 	}
 	return &TCPResult{
 		IP:   srcIP,

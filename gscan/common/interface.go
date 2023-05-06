@@ -147,6 +147,15 @@ func GetInterfaceBySrcMac(srcMac net.HardwareAddr) *GSInterface {
 	return nil
 }
 
+func GetIfaceBySrcMac(srcMac net.HardwareAddr) *GSIface {
+	for _, iface := range *getActiveIfaces() {
+		if iface.HWAddr.String() == srcMac.String() {
+			return &iface
+		}
+	}
+	return nil
+}
+
 var gsIfaces = getActiveIfaces()
 
 func GetActiveIfaces() *[]GSIface {
