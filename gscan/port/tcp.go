@@ -1,7 +1,6 @@
 package port
 
 import (
-	"fmt"
 	"gscan/common"
 	"gscan/common/ports"
 	"math/rand"
@@ -27,15 +26,7 @@ type TCPScanner struct {
 }
 
 func (t *TCPScanner) Save(sip []byte, sport layers.TCPPort) {
-	srcIP, _ := netip.AddrFromSlice(sip)
-	if _, ok := t.OpenPorts.Get(srcIP); !ok {
-		portSet := cmap.NewWithCustomShardingFunction[layers.TCPPort, bool](func(key layers.TCPPort) uint32 { return uint32(key) })
-		t.OpenPorts.Set(srcIP, portSet)
-	}
-	if res, ok := t.OpenPorts.Get(srcIP); ok {
-		res.Set(sport, true)
-		logger.Sugar().Debugf("IP: %s, Port: %s, Status: true", sip, sport)
-	}
+
 }
 
 func (t *TCPScanner) RecvTCP(packet gopacket.Packet) interface{} {
@@ -63,10 +54,10 @@ func (t *TCPScanner) RecvTCP(packet gopacket.Packet) interface{} {
 	if tcp == nil || tcp.DstPort != t.SrcPort {
 		return nil
 	}
-	logger.Debug("RecvTcp", zap.Any("tcp", tcp))
-	fmt.Println(tcp.Seq)
-	fmt.Println(tcp.Seq + 1)
-	if tcp.SYN && t.UseFullTCP {
+	if tcp.RST && tcp.ACK {
+		return nil
+	}
+	if tcp.SYN && tcp.ACK && t.UseFullTCP {
 		iface := common.GetInterfaceBySrcMac(eth.DstMAC)
 		if iface != nil {
 			t.TargetCh <- &TCPTarget{
@@ -81,10 +72,20 @@ func (t *TCPScanner) RecvTCP(packet gopacket.Packet) interface{} {
 		}
 		return nil
 	}
-	t.Save(ip.SrcIP, tcp.SrcPort)
-	sip, _ := netip.AddrFromSlice(ip.SrcIP)
+	srcIP, _ := netip.AddrFromSlice(ip.SrcIP)
+	if _, ok := t.OpenPorts.Get(srcIP); !ok {
+		portSet := cmap.NewWithCustomShardingFunction[layers.TCPPort, bool](func(key layers.TCPPort) uint32 { return uint32(key) })
+		t.OpenPorts.Set(srcIP, portSet)
+	}
+	if res, ok := t.OpenPorts.Get(srcIP); ok {
+		if _, ok := res.Get(tcp.SrcPort); ok {
+			return nil
+		}
+		res.Set(tcp.SrcPort, true)
+		logger.Sugar().Debugf("IP: %s, Port: %s, Status: true", srcIP, tcp.SrcPort)
+	}
 	return &TCPResult{
-		IP:   sip,
+		IP:   srcIP,
 		Port: tcp.SrcPort,
 	}
 }
@@ -99,7 +100,6 @@ func (t *TCPScanner) Recv() {
 }
 
 func (t *TCPScanner) SendSYNACK(target *TCPTarget) {
-	buffer := gopacket.NewSerializeBuffer()
 	ethLayer := &layers.Ethernet{
 		SrcMAC:       target.SrcMac,
 		DstMAC:       target.DstMac,
@@ -107,6 +107,7 @@ func (t *TCPScanner) SendSYNACK(target *TCPTarget) {
 	}
 	ipLayer := &layers.IPv4{
 		Version:  4,
+		Id:       uint16(rand.Intn(65535)),
 		TTL:      64,
 		Protocol: layers.IPProtocolTCP,
 		SrcIP:    target.SrcIP,
@@ -114,30 +115,60 @@ func (t *TCPScanner) SendSYNACK(target *TCPTarget) {
 		Flags:    layers.IPv4DontFragment,
 	}
 	for _, dstPort := range *target.DstPorts {
-		tcpLayer := &layers.TCP{
-			SrcPort: t.SrcPort,
-			DstPort: dstPort,
-			Seq:     100,
-			SYN:     true,
-			Options: []layers.TCPOption{},
-		}
-		if target.Ack != 0 {
-			fmt.Println(target.Ack)
-			fmt.Println(target.Ack - 1)
-			tcpLayer.Ack = target.Ack
+		var tcpLayer *layers.TCP
+		if target.Ack == 0 {
+			tcpLayer = &layers.TCP{
+				SrcPort: t.SrcPort,
+				DstPort: dstPort,
+				Seq:     100,
+				SYN:     true,
+				Window:  64240,
+				Options: []layers.TCPOption{
+					{
+						OptionType:   layers.TCPOptionKindMSS,
+						OptionLength: 4,
+						OptionData:   []byte{5, 0xb4},
+					},
+					{
+						OptionType: layers.TCPOptionKindNop,
+					},
+					{
+						OptionType: layers.TCPOptionKindNop,
+					},
+					{
+						OptionType:   layers.TCPOptionKindSACKPermitted,
+						OptionLength: 2,
+					},
+					{
+						OptionType: layers.TCPOptionKindNop,
+					},
+					{
+						OptionType:   layers.TCPOptionKindWindowScale,
+						OptionLength: 3,
+						OptionData:   []byte{7},
+					},
+				},
+			}
+		} else {
+			tcpLayer = &layers.TCP{
+				SrcPort: t.SrcPort,
+				DstPort: dstPort,
+				Seq:     101,
+				Ack:     target.Ack,
+				ACK:     true,
+				Window:  502,
+				Padding: []byte{0},
+			}
 
-			tcpLayer.ACK = true
-			tcpLayer.Seq = 101
-			tcpLayer.SYN = false
 		}
-		tcpLayer.SetNetworkLayerForChecksum(ipLayer)
+		if err := tcpLayer.SetNetworkLayerForChecksum(ipLayer); err != nil {
+			logger.Error("SetNetwordLayerForChecksum Failed", zap.Error(err))
+		}
+		buffer := gopacket.NewSerializeBuffer()
 		if err := gopacket.SerializeLayers(buffer, t.Opts, ethLayer, ipLayer, tcpLayer); err != nil {
 			logger.Error("SerializeLayers Failed", zap.Error(err))
 		}
 		data := buffer.Bytes()
-		if target.Ack != 0 {
-			fmt.Println(data)
-		}
 		if err := target.Handle.WritePacketData(data); err != nil {
 			logger.Error("WritePacketData Failed", zap.Error(err))
 		}
@@ -163,7 +194,7 @@ func (t *TCPScanner) ScanLocalNet() chan struct{} {
 }
 
 func (t *TCPScanner) generateLocalNetTarget(timeoutCh chan struct{}) {
-	for _, iface := range *arpInstance.Ifas {
+	for _, iface := range *common.GetActiveIfaces() {
 		t.generateTargetByPrefix(iface.Mask, iface)
 	}
 	time.Sleep(t.Timeout)
@@ -181,6 +212,8 @@ func (t *TCPScanner) generateTarget(ip netip.Addr, iface common.GSIface) {
 		for i := 1; i < 65536; i++ {
 			*dstPorts = append(*dstPorts, layers.TCPPort(i))
 		}
+	} else if t.PortScanType == CUSTOM_PORTS {
+		dstPorts = &t.Ports
 	}
 	t.TargetCh <- &TCPTarget{
 		SrcMac:   iface.HWAddr,
@@ -215,7 +248,7 @@ func (t *TCPScanner) generateTargetByPrefix(prefix netip.Prefix, iface common.GS
 
 func (t *TCPScanner) goScanMany(targetIPs []netip.Addr, timeoutCh chan struct{}) {
 	for _, targetIP := range targetIPs {
-		for _, iface := range *arpInstance.Ifas {
+		for _, iface := range *common.GetActiveIfaces() {
 			t.generateTarget(targetIP, iface)
 		}
 	}
@@ -229,12 +262,29 @@ func (t *TCPScanner) ScanMany(targetIPs []netip.Addr) chan struct{} {
 	return timeoutCh
 }
 
+func (t *TCPScanner) goScanPrefix(prefix netip.Prefix, timetouCh chan struct{}) {
+	for _, iface := range *arpInstance.Ifas {
+		if iface.Mask.Contains(prefix.Addr()) {
+			t.generateTargetByPrefix(prefix, iface)
+		}
+	}
+	time.Sleep(t.Timeout)
+	close(timetouCh)
+}
+
+func (t *TCPScanner) ScanPrefix(prefix netip.Prefix) chan struct{} {
+	timeoutCh := make(chan struct{})
+	go t.goScanPrefix(prefix, timeoutCh)
+	return timeoutCh
+}
+
 func newTCPScanner() *TCPScanner {
+	rand.Seed(time.Now().Unix())
 	t := &TCPScanner{
 		TargetCh:     make(chan *TCPTarget, 10),
 		ResultCh:     make(chan *TCPResult, 10),
 		Timeout:      3 * time.Second,
-		SrcPort:      layers.TCPPort(10000 + rand.Intn(55535)),
+		SrcPort:      layers.TCPPort(30768 + rand.Intn(34767)),
 		OpenPorts:    cmap.NewWithCustomShardingFunction[netip.Addr, cmap.ConcurrentMap[layers.TCPPort, bool]](common.Fnv32),
 		Opts:         gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true},
 		UseFullTCP:   false,

@@ -75,20 +75,22 @@ func TestTCPLocalNetAllPorts(t *testing.T) {
 
 func TestScanIPs(t *testing.T) {
 	tcp := port.GetTCPScanner()
-	tcp.UseFullTCP = false
-	tcp.PortScanType = port.ALL_PORTS
+	tcp.UseFullTCP = true
+	tcp.PortScanType = port.DEFAULT_PORTS
+	// tcp.PortScanType = port.ALL_PORTS
+	// tcp.Timeout = 100 * time.Second
 	timeoutCh := tcp.ScanMany(ips)
 	for {
 		select {
 		case <-timeoutCh:
 			return
 		case result := <-tcp.ResultCh:
-			t.Logf("%v", result)
+			t.Logf("ret: %v", result)
 		}
 	}
 }
 
-func Test_UDP(t *testing.T) {
+func TestUDP(t *testing.T) {
 	// os.Setenv("GSCAN_LOG_LEVEL", "development")
 	// p := port.New()
 	// defer p.Close()

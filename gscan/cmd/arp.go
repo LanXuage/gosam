@@ -23,16 +23,17 @@ var (
 			arpScanner.Timeout = time.Second * time.Duration(timeout)
 			hosts, _ := cmd.Flags().GetStringArray("host")
 			logger.Debug("runE", zap.Any("host", hosts))
+			if len(hosts) == 0 {
+				all, _ := cmd.Flags().GetBool("all")
+				if all {
+					timeoutCh := arpScanner.ScanLocalNet()
+					normalPrintf(timeoutCh, arpScanner.ResultCh)
+				} else {
+					cmd.Help()
+				}
+			}
 			for _, host := range hosts {
-				if host == "" {
-					all, _ := cmd.Flags().GetBool("all")
-					if all {
-						timeoutCh := arpScanner.ScanLocalNet()
-						normalPrintf(timeoutCh, arpScanner.ResultCh)
-					} else {
-						cmd.Help()
-					}
-				} else if ip, err := netip.ParseAddr(host); err != nil {
+				if ip, err := netip.ParseAddr(host); err != nil {
 					if prefix, err := netip.ParsePrefix(host); err != nil {
 						logger.Debug("arp", zap.Any("ip", ip))
 					} else {
@@ -41,12 +42,8 @@ var (
 						normalPrintf(timeoutCh, arpScanner.ResultCh)
 					}
 				} else {
-					result := arpScanner.ScanOne(ip)
-					if result != nil {
-						fmt.Printf("%s\t%v\t%s\n", result.IP, result.Mac, result.Vendor)
-					} else {
-						fmt.Printf("no result(timeout %ds)\n", timeout)
-					}
+					timeoutCh := arpScanner.ScanMany([]netip.Addr{ip})
+					normalPrintf(timeoutCh, arpScanner.ResultCh)
 				}
 			}
 			return nil
@@ -57,7 +54,7 @@ var (
 func normalPrintf(timeoutCh chan struct{}, resultCh chan *arp.ARPScanResult) {
 	for {
 		select {
-		case result := <-arpScanner.ResultCh:
+		case result := <-resultCh:
 			fmt.Printf("%s\t%v\t%s\n", result.IP, result.Mac, result.Vendor)
 		case <-timeoutCh:
 			return
